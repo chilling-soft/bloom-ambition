@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import TourSpot from "./TourSpot";
 import { askStream, FAIL_TEXT, postJson } from "@/lib/api";
 import { ARTICLE, ARTICLE_TEXT } from "@/lib/article";
 import { collectFields, isDeniedHost, setValue } from "@/lib/core";
@@ -60,7 +61,7 @@ const HINT_WORDS = /(diffusion module|pairformer|evoformer|diffusion-based)/gi;
 function withHints(text: string) {
   return text.split(HINT_WORDS).map((part, i) =>
     i % 2 ? (
-      <span key={i} className="underline decoration-indigo-400 decoration-dotted underline-offset-4">
+      <span key={i} data-tour="hint-word" className="underline decoration-indigo-400 decoration-dotted underline-offset-4">
         {part}
       </span>
     ) : (
@@ -117,7 +118,7 @@ export default function Demo() {
   const [rings, setRings] = useState<"on" | "off">("on");
   const [focusQ, setFocusQ] = useState<string | null>(null); // the question open in the Alter panel
   // first-run guide: each step ticks itself when the visitor really does it
-  const [tour, setTour] = useState({ explained: false, filled: false, mailed: false, menu: false, phone: false });
+  const [tour, setTour] = useState({ explained: false, filled: false, mailed: false, menu: false, phone: false, how: false });
   const [coach, setCoach] = useState<"open" | "folded">(() =>
     typeof window !== "undefined" && localStorage.getItem("alter-tour") === "folded" ? "folded" : "open",
   );
@@ -679,6 +680,28 @@ export default function Demo() {
     if (mode === "tour") void startTour();
     else steps[0].go();
   };
+  // the tutorial pointer: what to click for the current step, given what is on screen right now.
+  // Clicking the target completes the step, so the pointer moves on by itself
+  const spot: { target: string; label: string } | null = (() => {
+    const here = "여기를 클릭해보세요";
+    // after the last step, send them down the page to how it works
+    if (nextStep < 0) return tour.how ? null : { target: "how", label: here };
+    if (nextStep <= 1 && app !== "browser") return { target: "dock-browser", label: "브라우저를 열어 보세요" };
+    switch (nextStep) {
+      case 0:
+        if (tab !== "article") return { target: "tab-article", label: here };
+        return sel ? { target: "chip", label: "설명을 눌러보세요" } : { target: "hint-word", label: "아무 단어나 드래그해 보세요" };
+      case 1:
+        return { target: "tab-signup", label: here };
+      case 2:
+        return { target: "dock-mail", label: here };
+      case 3:
+        return { target: "menu", label: here };
+      case 4:
+        return popover ? { target: "phone", label: here } : { target: "menu", label: "✦를 눌러 보세요" };
+    }
+    return null;
+  })();
   const fromName = facts.find((f) => f.key === "name")?.value ?? "나";
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
   const appName = app === "browser" ? "브라우저" : app === "mail" ? "메일" : "Alter";
@@ -695,7 +718,7 @@ export default function Demo() {
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline">토 15:20</span>
-            <button data-toggle aria-label="Alter 메뉴" onClick={toggleMenu} className={`rounded px-2.5 py-0.5 text-sm ${popover ? "bg-black text-white" : "hover:bg-black/10"}`}>
+            <button data-toggle data-tour="menu" aria-label="Alter 메뉴" onClick={toggleMenu} className={`rounded px-2.5 py-0.5 text-sm ${popover ? "bg-black text-white" : "hover:bg-black/10"}`}>
               ✦
             </button>
           </div>
@@ -736,7 +759,7 @@ export default function Demo() {
               </ul>
               {doneCount === steps.length && (
                 <p className="mt-3 text-xs text-black/60">
-                  이게 한 바퀴예요. Alter가 배우고, 돕고, 통제는 계속 내가 해요. <a href="#how" className="underline">어떻게 동작하나요</a>
+                  이게 한 바퀴예요. Alter가 배우고, 돕고, 통제는 계속 내가 해요. <a href="#how" onClick={() => markDone("how")} className="underline">어떻게 동작하나요</a>
                 </p>
               )}
             </div>
@@ -851,7 +874,7 @@ export default function Demo() {
               <button onClick={() => { setVault(true); setPopover(false); }} className="flex-1 rounded-full border border-black/15 py-1.5 text-xs">보관함</button>
               <button onClick={() => { setGuide(true); setPopover(false); }} className="flex-1 rounded-full border border-black/15 py-1.5 text-xs">하루 가이드</button>
             </div>
-            <button onClick={() => { openPhone(); setPopover(false); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">폰으로 이어서 보기</button>
+            <button data-tour="phone" onClick={() => { openPhone(); setPopover(false); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">폰으로 이어서 보기</button>
           </div>
         )}
 
@@ -869,6 +892,7 @@ export default function Demo() {
                   {TABS.map((t) => (
                     <button
                       key={t.id}
+                      data-tour={`tab-${t.id}`}
                       onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); g.reset(); }}
                       className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
                     >
@@ -881,7 +905,7 @@ export default function Demo() {
                 <div ref={contentRef} className="relative min-h-0 flex-1 overflow-y-auto p-6">
                   {/* trigger: a small chip next to a selection */}
                   {sel && (
-                    <button data-chip onClick={() => explain(sel)} style={{ left: sel.x, top: sel.y }} className="absolute z-10 -translate-x-1/2 rounded-full bg-black px-3 py-1.5 text-xs text-white shadow-lg">
+                    <button data-chip data-tour="chip" onClick={() => explain(sel)} style={{ left: sel.x, top: sel.y }} className="absolute z-10 -translate-x-1/2 rounded-full bg-black px-3 py-1.5 text-xs text-white shadow-lg">
                       ✦ 설명 <span className="ml-1 opacity-50">⌘E</span>
                     </button>
                   )}
@@ -1117,14 +1141,14 @@ export default function Demo() {
           </button>
         )}
 
-        <a href="#how" className="absolute bottom-5 right-5 z-20 hidden rounded-full bg-black/80 px-5 py-2.5 text-base font-medium text-white shadow-lg backdrop-blur sm:block">
+        <a href="#how" data-tour="how" onClick={() => markDone("how")} className="absolute bottom-5 right-5 z-20 hidden rounded-full bg-black/80 px-5 py-2.5 text-base font-medium text-white shadow-lg backdrop-blur sm:block">
           아래로 스크롤해서 어떻게 동작하는지 확인해보세요 ↓
         </a>
 
         {/* Dock: the last icon is the Alter app itself (the dashboard) */}
-        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-end gap-2 rounded-2xl bg-white/40 p-2 backdrop-blur">
+        <div data-tour="dock" className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-end gap-2 rounded-2xl bg-white/40 p-2 backdrop-blur">
           {([["browser", "🌐", "브라우저"], ["mail", "✉️", "메일"]] as const).map(([id, icon, name]) => (
-            <button key={id} aria-label={name} onClick={() => openApp(id)} className={`flex h-12 w-12 flex-col items-center justify-center rounded-xl text-2xl ${app === id ? "bg-white shadow" : "hover:bg-white/60"}`}>
+            <button key={id} data-tour={`dock-${id}`} aria-label={name} onClick={() => openApp(id)} className={`flex h-12 w-12 flex-col items-center justify-center rounded-xl text-2xl ${app === id ? "bg-white shadow" : "hover:bg-white/60"}`}>
               {icon}
             </button>
           ))}
@@ -1148,6 +1172,11 @@ export default function Demo() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* tutorial pointer for the current guide step; hidden behind the welcome card and while the auto tour plays, gone once the guide is folded */}
+        {spot && coach === "open" && !welcome && !caption && !palette && !showPhone && (
+          <TourSpot root={osRef} target={spot.target} label={spot.label} beside={spot.target.startsWith("dock-") ? "dock" : undefined} />
         )}
 
         {/* Raycast-style palette: ⌘E with nothing selected. Type anything, or pick what fits right now */}
