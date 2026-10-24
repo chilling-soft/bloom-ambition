@@ -545,7 +545,12 @@ export default function Demo() {
   // the only thing Alter shows by itself: one short-lived line above the Dock
   const hud: React.ReactNode =
     denied ? (
-      <span className="text-white/70">✦ 여기서는 멈춰 있어요. 아무것도 읽거나 배우지 않아요.</span>
+      <>
+        <span className="text-white/70">✦ 여기서는 멈춰 있어요. 아무것도 읽거나 배우지 않아요.</span>
+        {tab === "bank" && !vaultDone && (
+          <button onClick={() => { setVaultAuto(true); setVault(true); }} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">보관함으로 채우기</button>
+        )}
+      </>
     ) : toast ? (
       <>
         <span>{toast.startsWith("✦") ? toast : `✦ ${toast}`}</span>
@@ -560,11 +565,6 @@ export default function Demo() {
         <button onClick={g.open} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">3줄 요약</button>
         <button onClick={nextTask} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">다음 태스크</button>
         <button aria-label="넘기기" onClick={g.dismiss} className="text-white/50 hover:text-white">✕</button>
-      </>
-    ) : app === "browser" && tab === "bank" && !vaultDone ? (
-      <>
-        <span>✦ 이 양식은 보관함의 아이디·카드번호·비밀번호로 채울 수 있어요</span>
-        <button onClick={() => { setVaultAuto(true); setVault(true); }} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">보관함으로 채우기</button>
       </>
     ) : app === "browser" && tab === "signup" && !joined && filled ? (
       <>
