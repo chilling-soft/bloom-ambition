@@ -83,6 +83,16 @@ export default function Demo() {
   const [mail, setMail] = useState({ to: "", subject: "", body: "" });
   const [mailUsed, setMailUsed] = useState<string[]>([]);
   const [mailDrafting, setMailDrafting] = useState(false);
+  const [declined, setDeclined] = useState(false); // the user undid the fill on this form
+  const [focusAsk, setFocusAsk] = useState<{ x: number; y: number } | null>(null); // "fill from Alter?" under a focused field
+  const [optOut, setOptOut] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(localStorage.getItem("alter-optout") ?? "[]");
+    } catch {
+      return [];
+    }
+  });
 
   const contentRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
@@ -93,6 +103,14 @@ export default function Demo() {
   const host = TABS.find((t) => t.id === tab)!.host;
   const denied = app === "browser" && isDeniedHost(host);
   const canLearn = learning === "on" && !denied;
+  const optedOut = optOut.includes(host);
+
+  const saveOptOut = (next: string[]) => {
+    setOptOut(next);
+    try {
+      localStorage.setItem("alter-optout", JSON.stringify(next));
+    } catch {}
+  };
 
   useEffect(() => {
     if (!code) return;
@@ -148,7 +166,7 @@ export default function Demo() {
     const r = s.getRangeAt(0).getBoundingClientRect();
     const c = contentRef.current!.getBoundingClientRect();
     const para = s.anchorNode?.parentElement?.closest("p")?.textContent ?? text;
-    const next = { x: r.left - c.left + r.width / 2, y: r.top - c.top - 40, text, context: para };
+    const next = { x: r.left - c.left + r.width / 2, y: r.top - c.top + contentRef.current!.scrollTop - 40, text, context: para };
     setSel(next);
     if (trigger === "auto") setTimeout(() => explain(next), 600);
   };
@@ -170,6 +188,8 @@ export default function Demo() {
     }
     setMarks(m);
     setFilled(true);
+    setDeclined(false);
+    setFocusAsk(null);
     const ft = fields.find((f) => f.freeText);
     if (ft) {
       const share = facts.filter((f) => f.kind !== "identity").map(({ id, label, value }) => ({ id, label, value }));
@@ -195,6 +215,19 @@ export default function Demo() {
     setFilled(false);
     setDraft(null);
     setMarks({});
+    setDeclined(true); // from now on, offer again when a field gets focus instead of refilling on its own
+  };
+
+  // after Undo: focusing a fillable field offers to fill again (or to stop offering on this site)
+  const onFormFocus = (e: React.FocusEvent) => {
+    const el = e.target as HTMLInputElement | HTMLTextAreaElement;
+    if (!declined || filled || optedOut || !formRef.current || !contentRef.current) return;
+    const f = collectFields(formRef.current).find((x) => x.el === el);
+    if (!f || f.sensitive || (!f.key && !f.freeText)) return;
+    const r = el.getBoundingClientRect();
+    const c = contentRef.current.getBoundingClientRect();
+    // above the field: the browser's own autofill list opens below it
+    setFocusAsk({ x: r.left - c.left, y: r.top - c.top + contentRef.current.scrollTop - 52 });
   };
 
   // cross-app moment: what was read in the Browser becomes the draft in Mail
@@ -235,6 +268,8 @@ export default function Demo() {
     setFilled(false);
     setDraft(null);
     setJoined(false);
+    setDeclined(false);
+    setFocusAsk(null);
   };
 
   // a value the user types over stops being "filled by Alter" (synthetic events from fill() are not trusted)
@@ -253,11 +288,11 @@ export default function Demo() {
 
   useEffect(() => {
     // forms fill themselves (standard fields are low-risk and Undo is one tap); only "explain" is gated by the Call toggle
-    if (app === "browser" && tab === "signup" && fillMode === "auto" && !joined && detected && code && !autoFilledRef.current) {
+    if (app === "browser" && tab === "signup" && fillMode === "auto" && !optedOut && !joined && detected && code && !autoFilledRef.current) {
       autoFilledRef.current = true;
       fill();
     }
-  }, [app, tab, fillMode, joined, detected, code, fill]);
+  }, [app, tab, fillMode, optedOut, joined, detected, code, fill]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -343,6 +378,7 @@ export default function Demo() {
       if (popover && !t.closest("[data-popover], [data-toggle]")) setPopover(false);
       if (card && !t.closest("[data-bubble]")) setCard(null);
       if (sel && !t.closest("[data-chip], article")) setSel(null);
+      if (focusAsk && !t.closest("[data-askfill]")) setFocusAsk(null);
     };
   });
   useEffect(() => {
@@ -369,7 +405,7 @@ export default function Demo() {
         <span>✦ Filled it in for you</span>
         <button onClick={undo} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">Undo</button>
       </>
-    ) : app === "browser" && tab === "signup" && !joined && fillMode === "ask" && detected ? (
+    ) : app === "browser" && tab === "signup" && !joined && fillMode === "ask" && !optedOut && detected ? (
       <>
         <span>✦ Fill this form for you?</span>
         <button onClick={fill} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">Fill it</button>
@@ -451,6 +487,17 @@ export default function Demo() {
               <Chips label="Forms" value={fillMode} options={[["auto", "Auto"], ["ask", "Ask"], ["off", "Off"]]} onChange={setFillMode} />
               <Chips label="Learning" value={learning} options={[["on", "On"], ["off", "Off"]]} onChange={setLearning} />
             </div>
+            {optOut.length > 0 && (
+              <div className="mt-3 text-xs text-black/60">
+                <p className="mb-1 font-medium uppercase tracking-wide text-black/40">Not offering fill on</p>
+                {optOut.map((h) => (
+                  <p key={h} className="flex items-center justify-between">
+                    <span className="font-mono">{h}</span>
+                    <button onClick={() => saveOptOut(optOut.filter((x) => x !== h))} className="underline">Allow again</button>
+                  </p>
+                ))}
+              </div>
+            )}
             <p className="mt-3 text-xs text-black/50">Never read or learned: passwords, payment fields, banking sites.</p>
             <p className="mt-1 text-xs text-black/40">Vault for sensitive items: coming next.</p>
             <button onClick={() => { setShowPhone(true); setPopover(false); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">See it on your phone</button>
@@ -458,7 +505,7 @@ export default function Demo() {
         )}
 
         {/* app window */}
-        <div className="absolute inset-x-0 bottom-24 top-8 flex justify-center px-4 pt-5">
+        <div className="absolute inset-x-0 bottom-36 top-8 flex justify-center px-4 pt-5">
           {app === "browser" ? (
             <div className="flex h-full w-full max-w-[820px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
               <div className="flex items-center gap-2 bg-[#ece7e1] px-3 pt-2">
@@ -470,7 +517,7 @@ export default function Demo() {
                 {TABS.map((t) => (
                   <button
                     key={t.id}
-                    onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); }}
+                    onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); }}
                     className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
                   >
                     {t.title}
@@ -485,6 +532,20 @@ export default function Demo() {
                   <button data-chip onClick={() => explain(sel)} style={{ left: sel.x, top: sel.y }} className="absolute z-10 -translate-x-1/2 rounded-full bg-black px-3 py-1.5 text-xs text-white shadow-lg">
                     ✦ Explain <span className="ml-1 opacity-50">⌘E</span>
                   </button>
+                )}
+
+                {/* after Undo: a small offer under the field you just focused, like an autofill dropdown */}
+                {focusAsk && tab === "signup" && (
+                  <div data-askfill style={{ left: focusAsk.x, top: focusAsk.y }} className="absolute z-10 flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm shadow-xl">
+                    <span>✦ Fill from what I know?</span>
+                    <button onClick={() => fill()} className="rounded-full bg-black px-3 py-1 text-xs text-white">Fill</button>
+                    <button
+                      onClick={() => { saveOptOut([...optOut, host]); setFocusAsk(null); setToast("Won’t offer here again. Change it in ✦ settings."); }}
+                      className="rounded-full border border-black/20 px-3 py-1 text-xs"
+                    >
+                      Not on this site
+                    </button>
+                  </div>
                 )}
 
                 {/* answer: a small bubble next to the word, gone on Esc */}
@@ -520,7 +581,7 @@ export default function Demo() {
                 )}
 
                 {tab === "signup" && (
-                  <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} className="mx-auto max-w-sm space-y-3">
+                  <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} onFocus={onFormFocus} className="mx-auto max-w-sm space-y-3">
                     <h3 className="text-xl font-semibold">Join the Esports Club</h3>
                     {joined ? (
                       <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">Welcome! You’re in.</p>
@@ -579,7 +640,7 @@ export default function Demo() {
 
         {/* HUD */}
         {hud && (
-          <div className="pointer-events-none absolute bottom-24 left-1/2 z-30 -translate-x-1/2">
+          <div className="pointer-events-none absolute bottom-[5.5rem] left-1/2 z-30 -translate-x-1/2">
             <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-black/90 px-4 py-2 text-sm text-white shadow-lg">{hud}</div>
           </div>
         )}
