@@ -35,28 +35,26 @@ export async function POST(req: Request) {
   if (!(await allow(code))) return fail("cap", 429);
 
   const prompt = `질문: ${q}\n\n사용자가 보고 있는 글:\n${context || "(없음)"}\n\nAlter가 아는 사용자 정보:\n${facts.map((f) => `- ${f.label}: ${f.value}`).join("\n") || "(아직 없음)"}`;
-  // one retry: most failures are a transient timeout or overload
-  let best = "";
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  // two tries of 12s fit inside maxDuration; most failures are a transient timeout or overload
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const { text, finishReason } = await generateText({
+      const { text } = await generateText({
         model: anthropic("claude-haiku-5-5"),
         system: SYSTEM,
         prompt,
         maxOutputTokens: 800,
-        abortSignal: AbortSignal.timeout(15000),
+        abortSignal: AbortSignal.timeout(12000),
       });
       const t = text.trim();
-      // the model sometimes stops mid-sentence: only a reply that ends like a sentence is shown as is
-      if (t && finishReason === "stop" && (loose || /[.!?。요다죠까]["”)]?$/.test(t))) return NextResponse.json({ text: t, live: true });
-      console.error(`ask incomplete (attempt ${attempt})`, finishReason, t.slice(-20));
-      if (t.length > best.length) best = t;
+      if (!t) continue;
+      // the model sometimes stops mid-sentence: cut back to the last full sentence instead of calling it again
+      const ends = /[.!?。요다죠까]["”)]?$/.test(t);
+      if (loose || ends) return NextResponse.json({ text: t, live: true });
+      const cut = Math.max(t.lastIndexOf("."), t.lastIndexOf("다"), t.lastIndexOf("요"));
+      return NextResponse.json({ text: cut > 40 ? t.slice(0, cut + 1) : t, live: true });
     } catch (e) {
       console.error(`ask failed (attempt ${attempt})`, e instanceof Error ? e.message : e);
     }
   }
-  // still unfinished after retries: keep up to the last complete sentence rather than a dangling one
-  const end = Math.max(best.lastIndexOf("."), best.lastIndexOf("다"), best.lastIndexOf("요"));
-  if (end > 40) return NextResponse.json({ text: best.slice(0, end + 1), live: true });
   return fail("error", 502);
 }
