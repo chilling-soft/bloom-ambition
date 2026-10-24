@@ -25,7 +25,7 @@ const SYSTEM =
 
 export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "bad body" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ reason: "bad_body" }, { status: 400 });
   const { code, term, context } = parsed.data;
   const canned = CANNED[term.toLowerCase()] ?? `"${term}"은(는) 지금 읽고 있는 글에서 쓰인 용어예요.`;
 
