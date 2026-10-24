@@ -14,7 +14,7 @@ const body = z.object({
 });
 
 const SYSTEM =
-  "사용자를 대신해 양식 칸에 들어갈 짧은 글(최대 60자, 1인칭, 한국어)을 씁니다. 규칙 0: 주어진 사실만 쓰고 절대 지어내지 마세요. 사용한 사실의 id도 함께 돌려주세요.";
+  "사용자를 대신해 양식 칸에 들어갈 짧은 글(최대 60자, 1인칭, 한국어)을 씁니다. 규칙 0: 주어진 사실만 쓰고 절대 지어내지 마세요. 사용한 사실의 id도 함께 돌려주세요. 라벨이 '글쓰기 취향'인 사실은 내용이 아니라 문체 규칙이니 있으면 문체에 반영하고, 그 id는 돌려주지 마세요.";
 
 export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));

@@ -98,7 +98,8 @@ export default function Demo() {
   const [showPhone, setShowPhone] = useState(false);
   const [vault, setVault] = useState(false);
   const [vaultAuto, setVaultAuto] = useState(false); // opened from the suggestion: fill as soon as it unlocks
-  const [vaultAsk, setVaultAsk] = useState<{ x: number; y: number } | null>(null); // floating offer above a focused secret field
+  const [welcome, setWelcome] = useState(false); // first visit: one card that says what to try
+  const [mailDraft, setMailDraft] = useState(""); // what Alter wrote, to compare with what the person actually sends
   const [guide, setGuide] = useState(false);
   const [popover, setPopover] = useState(false); // menu-bar window: rings, what Alter knows, settings
   const [palette, setPalette] = useState(false); // Raycast-style command palette (⌘E with no selection)
@@ -309,17 +310,6 @@ export default function Demo() {
     setFocusAsk({ x: r.left - c.left, y: r.top - c.top + contentRef.current.scrollTop - 52 });
   };
 
-  // a secret field (password, id, card number) got focus: Alter offers its vault from above the field, outside the page
-  const onVaultFocus = (e: React.FocusEvent) => {
-    const el = e.target as HTMLInputElement;
-    const secret = el.tagName === "INPUT" && (el.type === "password" || el.name === "userid" || el.name === "cardno");
-    if (!secret) return setVaultAsk(null);
-    if (!osRef.current) return;
-    const r = el.getBoundingClientRect();
-    const o = osRef.current.getBoundingClientRect();
-    setVaultAsk({ x: r.left - o.left, y: r.top - o.top - 46 });
-  };
-
   // cross-app moment: what was read in the Browser becomes the draft in Mail
   const draftMail = async () => {
     if (!code) return;
@@ -331,9 +321,28 @@ export default function Demo() {
     if (!r.ok || !r.data.text) return setToast(`✦ ${r.ok ? FAIL_TEXT.error : FAIL_TEXT[r.reason]}`);
     setMail((m) => ({ ...m, to: m.to || "kim.prof@lab.example", subject: m.subject || "Re: 다음 주 저널클럽 발표 순서", body: r.data.text }));
     setMailUsed(r.data.usedFactIds ?? []);
+    setMailDraft(r.data.text);
     setMarks({ body: "방금 읽은 글로 초안", subject: "방금 읽은 글로 초안", to: "받은 편지에서" });
     setFilled(true);
     setTour((t) => (t.mailed ? t : { ...t, mailed: true }));
+  };
+
+  // sending an edited draft is the clearest signal of taste: Alter reads the difference and keeps one rule
+  const sendMail = async () => {
+    const edited = mail.body.trim();
+    if (!mailDraft || !edited || edited === mailDraft) return setToast("✦ 보냈어요 (데모)");
+    setToast("✦ 고친 곳에서 배우는 중…");
+    const a = await askAnything(
+      `AI가 쓴 초안과 사람이 고쳐 보낸 글을 비교해서, 이 사람의 글쓰기 취향 규칙을 25자 이내 한 줄로만 답해줘. 예: 교수님께는 결론부터 짧게. 규칙만 출력.\n\n초안: ${mailDraft}\n\n보낸 글: ${edited}`,
+      true,
+    );
+    if (!a.ok) return setToast("✦ 보냈어요 (데모)");
+    const rule = a.text.replace(/^[\s"'“”]+|[\s"'“”.]+$/g, "").slice(0, 60);
+    const prev = facts;
+    setFacts((f) => upsert(f, { kind: "habit", key: "habit:mail-style", label: "글쓰기 취향", value: rule, source: "고쳐 보낸 메일에서 배움", confidence: 0.7 }));
+    setMailDraft("");
+    setNoteUndo(() => () => setFacts(prev));
+    setToast(`✦ 배웠어요: ${rule}`);
   };
 
   const undoMail = () => {
@@ -356,7 +365,6 @@ export default function Demo() {
     setDeclined(false);
     setFocusAsk(null);
     setFocusQ(null);
-    setVaultAsk(null);
     g.reset();
     if (a === "alter") markDone("menu");
   };
@@ -485,6 +493,15 @@ export default function Demo() {
     setPaletteA(await askAnything(q, false, (soFar) => setPaletteA({ ok: true, text: soFar })));
   };
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        if (!localStorage.getItem("alter-welcome")) setWelcome(true);
+      } catch {}
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const kbRef = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     kbRef.current = (e) => {
@@ -505,7 +522,6 @@ export default function Demo() {
         setPopover(false);
         setCard(null);
         setSel(null);
-        setVaultAsk(null);
         g.minimize();
         return;
       }
@@ -534,7 +550,6 @@ export default function Demo() {
       if (card && !t.closest("[data-bubble]")) setCard(null);
       if (sel && !t.closest("[data-chip], article")) setSel(null);
       if (focusAsk && !t.closest("[data-askfill]")) setFocusAsk(null);
-      if (vaultAsk && !t.closest("[data-vaultask]")) setVaultAsk(null);
     };
   });
   useEffect(() => {
@@ -552,6 +567,7 @@ export default function Demo() {
   const gl = g.glance;
   const closedNames = INTERESTS.filter((i) => isClosed(done, i)).map((i) => i.short);
   const panelOpen = app === "browser" && tab === "article" && (gl?.status === "open" || gl?.status === "loading");
+  const vaultOffer = app === "browser" && !vault && (tab === "bank" || (tab === "signup" && !joined));
   const closePanel = () => {
     g.dismiss();
     setFocusQ(null);
@@ -590,7 +606,7 @@ export default function Demo() {
       <span>✦ 초안을 쓰는 중…</span>
     ) : app === "mail" && filled ? (
       <>
-        <span>✦ 방금 읽은 글로 초안을 썼어요</span>
+        <span>✦ 방금 읽은 글로 초안을 썼어요 · 채팅이었다면 복사 → 전환 → 붙여넣기 → 질문</span>
         <button onClick={undoMail} className="rounded-full border border-white/30 px-4 py-1.5 text-base">되돌리기</button>
       </>
     ) : app === "mail" && !mail.body ? (
@@ -609,6 +625,14 @@ export default function Demo() {
   ];
   const doneCount = steps.filter((s) => s.done).length;
   const nextStep = steps.findIndex((s) => !s.done);
+  const styleRule = facts.find((f) => f.key === "habit:mail-style")?.value; // what Alter learned from edited drafts
+  const closeWelcome = (start: boolean) => {
+    setWelcome(false);
+    try {
+      localStorage.setItem("alter-welcome", "1");
+    } catch {}
+    if (start) steps[0].go();
+  };
   const fromName = facts.find((f) => f.key === "name")?.value ?? "나";
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
   const appName = app === "browser" ? "브라우저" : app === "mail" ? "메일" : "Alter";
@@ -798,7 +822,7 @@ export default function Demo() {
                   {TABS.map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); setVaultAsk(null); g.reset(); }}
+                      onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); g.reset(); }}
                       className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
                     >
                       {t.title}
@@ -845,6 +869,7 @@ export default function Demo() {
                             <button onClick={() => explain(card.retry!)} className="mt-2 rounded-full bg-black px-3 py-1 text-xs text-white">다시 시도</button>
                           )}
                           {!card.live && !card.retry && <p className="mt-1 text-xs text-black/40">저장된 답변</p>}
+                          {!card.retry && <p className="mt-2 text-[11px] text-black/40">채팅이었다면: 복사 → 앱 전환 → 붙여넣기 → 질문</p>}
                         </>
                       )}
                     </div>
@@ -863,7 +888,7 @@ export default function Demo() {
                   )}
 
                   {tab === "signup" && (
-                    <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} onFocus={(e) => { onFormFocus(e); onVaultFocus(e); }} className="mx-auto max-w-sm space-y-3">
+                    <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} onFocus={onFormFocus} className="mx-auto max-w-sm space-y-3">
                       <h3 className="text-xl font-semibold">단백질 설계 세미나 신청</h3>
                       {joined ? (
                         <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">신청이 접수됐어요.</p>
@@ -887,7 +912,7 @@ export default function Demo() {
                   )}
 
                   {tab === "bank" && (
-                    <form onSubmit={(e) => e.preventDefault()} onFocus={onVaultFocus} className="mx-auto max-w-sm space-y-3">
+                    <form onSubmit={(e) => e.preventDefault()} className="mx-auto max-w-sm space-y-3">
                       <h3 className="text-xl font-semibold">카드사 로그인</h3>
                       <label className="block text-sm">아이디<input name="userid" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <label className="block text-sm">카드번호<input name="cardno" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
@@ -899,6 +924,21 @@ export default function Demo() {
               </div>
 
               {/* the Alter panel: its own window to the side. Summary first; a question navigates to its answer and back */}
+              {vaultOffer && (
+                <aside data-vault-offer className="flex h-full w-[260px] flex-none flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+                  <div className="flex h-10 flex-none items-center gap-2 bg-[#ece7e1] px-3">
+                    <span className="text-sm font-medium">✦ Alter</span>
+                    <span className="text-xs text-black/40">· 보관함</span>
+                  </div>
+                  <div className="p-4 text-sm">
+                    <p className="font-medium">이 양식을 보관함으로 채울 수 있어요</p>
+                    <p className="mt-2 text-black/60">아이디·카드번호·비밀번호는 Alter가 읽지 않아요. 암호화된 보관함에서 가져와 채워요.</p>
+                    <button onClick={() => { setVaultAuto(true); setVault(true); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">보관함으로 채우기</button>
+                    <p className="mt-2 text-[11px] text-black/40">데모 암호는 alter예요.</p>
+                  </div>
+                </aside>
+              )}
+
               {panelOpen && (
                 <aside data-glance className="flex h-full w-[340px] flex-none flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
                   <div className="flex h-10 flex-none items-center gap-2 bg-[#ece7e1] px-3">
@@ -984,10 +1024,11 @@ export default function Demo() {
                 <label className="block">받는 사람{tag("to")}<input name="to" value={mail.to} onChange={(e) => setMail((m) => ({ ...m, to: e.target.value }))} placeholder="kim.prof@lab.example" className={inp("to")} /></label>
                 <label className="block">제목{tag("subject")}<input name="subject" value={mail.subject} onChange={(e) => setMail((m) => ({ ...m, subject: e.target.value }))} className={inp("subject")} /></label>
                 <label className="block">내용{tag("body")}<textarea name="body" rows={6} value={mail.body} onChange={(e) => setMail((m) => ({ ...m, body: e.target.value }))} className={inp("body")} /></label>
+                {filled && styleRule && <p className="text-xs text-indigo-700">✦ 고쳐 보낸 메일에서 배운 취향을 참고했어요: {styleRule}</p>}
                 {mailUsed.length > 0 && (
                   <p className="text-xs text-black/50">근거: {mailUsed.map((id) => facts.find((f) => f.id === id)?.value).filter(Boolean).join(", ") || "방금 읽은 글"}</p>
                 )}
-                <button onClick={() => setToast("보냈어요 (데모)")} className="rounded-lg bg-black px-5 py-2 text-white">보내기</button>
+                <button onClick={() => void sendMail()} className="rounded-lg bg-black px-5 py-2 text-white">보내기</button>
               </div>
             </div>
           ) : (
@@ -1007,23 +1048,17 @@ export default function Demo() {
           )}
         </div>
 
-        {/* OS-level floating button: it belongs to Alter, not to the page underneath */}
-        {vaultAsk && !vault && app === "browser" && (tab === "bank" || tab === "signup") && (
-          <button
-            data-vaultask
-            style={{ left: vaultAsk.x, top: vaultAsk.y }}
-            onClick={() => { setVaultAuto(true); setVault(true); setVaultAsk(null); }}
-            className="absolute z-30 rounded-full bg-black px-3.5 py-1.5 text-xs text-white shadow-xl"
-          >
-            ✦ 보관함에서 채우기
-          </button>
-        )}
-
         {/* HUD */}
         {hud && (
           <div className="pointer-events-none absolute bottom-[5.5rem] left-1/2 z-30 -translate-x-1/2">
             <div className="pointer-events-auto flex max-w-[92vw] flex-wrap items-center justify-center gap-3 rounded-full bg-black/90 px-6 py-3.5 text-lg text-white shadow-2xl">{hud}</div>
           </div>
+        )}
+
+        {app !== "alter" && nextStep >= 0 && !welcome && (
+          <button onClick={steps[nextStep].go} className="absolute bottom-5 left-5 z-20 max-w-[19rem] rounded-full bg-white/90 px-5 py-2.5 text-left text-sm shadow-lg backdrop-blur min-[1360px]:hidden">
+            <span className="text-indigo-600">다음 →</span> {steps[nextStep].text}
+          </button>
         )}
 
         <a href="#how" className="absolute bottom-5 right-5 z-20 hidden rounded-full bg-black/80 px-5 py-2.5 text-base font-medium text-white shadow-lg backdrop-blur sm:block">
@@ -1039,6 +1074,25 @@ export default function Demo() {
           ))}
           <button aria-label="Alter" onClick={() => openApp("alter")} className={`flex h-12 w-12 items-center justify-center rounded-xl text-xl text-white ${app === "alter" ? "bg-indigo-600 shadow-md" : "bg-black"}`}>✦</button>
         </div>
+
+        {welcome && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/25 p-4">
+            <div className="w-[min(92%,460px)] rounded-2xl bg-white p-6 shadow-2xl">
+              <p className="font-mono text-xs text-black/40">60초 체험</p>
+              <h2 className="mt-1 text-xl font-semibold">직접 써 보세요. 설명서는 없어요</h2>
+              <ol className="mt-4 space-y-2 text-sm text-black/75">
+                <li>1. 글을 3초 읽어요. Alter가 먼저 말을 걸어요.</li>
+                <li>2. 「세미나 신청」과 「카드사」 탭을 열어요. 양식을 채워 줘요.</li>
+                <li>3. 메일을 열어요. 읽은 글로 답장 초안을 쓰고, 고쳐서 보내면 내 취향을 배워요.</li>
+              </ol>
+              <p className="mt-4 text-xs text-black/50">채팅창에 복사해 붙여넣지 않아도, 지금 보는 화면에서 바로 도와요.</p>
+              <div className="mt-5 flex gap-2">
+                <button onClick={() => closeWelcome(true)} className="flex-1 rounded-full bg-black py-2.5 text-sm text-white">시작하기</button>
+                <button onClick={() => closeWelcome(false)} className="rounded-full border border-black/15 px-4 py-2.5 text-sm">둘러볼게요</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Raycast-style palette: ⌘E with nothing selected. Type anything, or pick what fits right now */}
         {palette && (
