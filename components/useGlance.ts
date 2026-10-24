@@ -66,17 +66,18 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
     [facts],
   );
 
+  // a reply keeps what the person already did: an opened panel stays open, a counted offer is never fresh again
   const show = useCallback((r: GlanceReply, showNow: boolean) => {
-    setGlance({
-      status: showNow ? "open" : "ready",
+    setGlance((g) => g === null && !showNow && engaged.current ? g : ({
+      status: showNow || g?.status === "loading" ? "open" : g?.counted ? g.status : "ready",
       gist: r.gist,
       questions: r.questions ?? [],
       answers: {},
       errors: {},
       why: r.why ?? "",
       live: !!r.live,
-      counted: false,
-    });
+      counted: showNow || !!g?.counted, // a panel opened on purpose is never offered again after minimizing
+    }));
   }, []);
 
   const load = useCallback(
@@ -134,7 +135,7 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
   const open = () => {
     if (!glance) return;
     engaged.current = true;
-    setGlance({ ...glance, status: "open", counted: true });
+    setGlance({ ...glance, status: glance.status === "prefetch" ? "loading" : "open", counted: true }); // still preparing: show the spinner, the reply fills it in
     if (!glance.counted) accepted();
   };
 
