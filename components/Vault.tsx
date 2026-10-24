@@ -13,6 +13,9 @@ const SEED: Item[] = [
   { id: "v3", label: "주소", value: "서울시 중구 세종대로 110 (테스트)", field: "address", log: [] },
 ];
 
+// one place that writes the access log, so every way of filling leaves the same trace
+const withLog = (list: Item[], what: string): Item[] => list.map((i) => ({ ...i, log: [...i.log.filter((l) => l !== what), what] }));
+
 const enc = new TextEncoder();
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -72,8 +75,9 @@ export function Vault({ onClose, onFill, canFill, autoFill = false }: { onClose:
         const opened = await open(stored, key);
         // a vault made before passwords were supported gets the sample one added
         const next = opened.some((i) => i.field === "password") ? opened : [...opened, SEED.find((i) => i.field === "password")!];
-        if (next !== opened) await seal(next, key, salt);
-        setItems(next);
+        const shown = autoFill && canFill ? withLog(next, "채우기") : next;
+        if (shown !== opened) await seal(shown, key, salt);
+        setItems(shown);
         setSession({ key, salt });
         // opened from the suggestion: the person already said yes, so fill right after the passphrase
         if (autoFill && canFill) onFill(Object.fromEntries(next.map((i) => [i.field, i.value])));
@@ -81,8 +85,9 @@ export function Vault({ onClose, onFill, canFill, autoFill = false }: { onClose:
         // first open: the passphrase you type now creates the vault, seeded with fake values
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const key = await deriveKey(pass, salt);
-        await seal(SEED, key, salt);
-        setItems(SEED);
+        const first = autoFill && canFill ? withLog(SEED, "채우기") : SEED;
+        await seal(first, key, salt);
+        setItems(first);
         setSession({ key, salt });
         if (autoFill && canFill) onFill(Object.fromEntries(SEED.map((i) => [i.field, i.value])));
       }
@@ -119,7 +124,7 @@ export function Vault({ onClose, onFill, canFill, autoFill = false }: { onClose:
 
   // one tap for the whole form: the page keeps only the fields it has, the rest is ignored
   const fillAll = () => {
-    for (const i of items) note(i.id, "채우기");
+    save(withLog(items, "채우기"));
     onFill(Object.fromEntries(items.map((i) => [i.field, i.value])));
   };
 
