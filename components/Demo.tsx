@@ -42,6 +42,20 @@ function Chips<T extends string>({ label, value, options, onChange }: { label: s
   );
 }
 
+// words worth selecting get a dotted underline, so a first-time visitor knows what to try
+const HINT_WORDS = /(snowballing|Baron)/g;
+function withHints(text: string) {
+  return text.split(HINT_WORDS).map((part, i) =>
+    i % 2 ? (
+      <span key={i} className="underline decoration-indigo-400 decoration-dotted underline-offset-4">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
 export default function Demo() {
   const [tab, setTab] = useState<Tab>("article");
   const [facts, setFacts] = useState<Fact[]>(SEED);
@@ -77,6 +91,11 @@ export default function Demo() {
   const [mailUsed, setMailUsed] = useState<string[]>([]);
   const [mailDrafting, setMailDrafting] = useState(false);
   const [proactivity, setProactivity] = useState<Proactivity>("balanced");
+  // first-run guide: each step ticks itself when the visitor really does it
+  const [tour, setTour] = useState({ explained: false, filled: false, mailed: false, menu: false, phone: false });
+  const [coach, setCoach] = useState<"open" | "folded">(() =>
+    typeof window !== "undefined" && localStorage.getItem("alter-tour") === "folded" ? "folded" : "open",
+  );
   const [declined, setDeclined] = useState(false); // the user undid the fill on this form
   const [focusAsk, setFocusAsk] = useState<{ x: number; y: number } | null>(null); // "fill from Alter?" under a focused field
   const [optOut, setOptOut] = useState<string[]>(() => {
@@ -100,6 +119,26 @@ export default function Demo() {
   const optedOut = optOut.includes(host);
 
   const g = useGlance({ code, facts, setFacts, learning: canLearn, watching: app === "browser" && tab === "article", proactivity });
+
+  const markDone = (step: keyof typeof tour) => setTour((t) => (t[step] ? t : { ...t, [step]: true }));
+  const openMenu = () => {
+    markDone("menu");
+    setPopover(true);
+  };
+  const toggleMenu = () => {
+    if (!popover) markDone("menu");
+    setPopover(!popover);
+  };
+  const openPhone = () => {
+    markDone("phone");
+    setShowPhone(true);
+  };
+  const foldCoach = (to: "open" | "folded") => {
+    setCoach(to);
+    try {
+      localStorage.setItem("alter-tour", to);
+    } catch {}
+  };
 
   const saveOptOut = (next: string[]) => {
     setOptOut(next);
@@ -143,6 +182,7 @@ export default function Demo() {
       const text: string = r?.text ?? "Could not reach Alter. Try again.";
       setLoading(false);
       setCard({ term: s.text, text, live: !!r?.live });
+      setTour((t) => (t.explained ? t : { ...t, explained: true }));
       setHandoff({ title: "Esports Daily: T1 reach the final", term: s.text, explanation: text, ts: Date.now() });
       if (learning === "on" && s.text.length >= 4 && !STOPWORDS.has(s.text.toLowerCase())) {
         setFacts((f) => {
@@ -184,6 +224,7 @@ export default function Demo() {
     }
     setMarks(m);
     setFilled(true);
+    setTour((t) => (t.filled ? t : { ...t, filled: true }));
     setDeclined(false);
     setFocusAsk(null);
     const ft = fields.find((f) => f.freeText);
@@ -245,6 +286,7 @@ export default function Demo() {
     setMailUsed(r.usedFactIds ?? []);
     setMarks({ body: "Drafted from what you just read", subject: "Drafted from what you just read" });
     setFilled(true);
+    setTour((t) => (t.mailed ? t : { ...t, mailed: true }));
   };
 
   const undoMail = () => {
@@ -336,8 +378,8 @@ export default function Demo() {
       if (g.glance && g.glance.status !== "loading") g.open();
       else g.load(true);
     }
-    else if (id === "settings") setPopover(true);
-    else setShowPhone(true);
+    else if (id === "settings") openMenu();
+    else openPhone();
   };
 
   const kbRef = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -429,6 +471,14 @@ export default function Demo() {
     ) : null;
 
   const gl = g.glance;
+  const steps = [
+    { done: tour.explained || g.nudges.opened > 0, text: "Read for a few seconds, or select a word and press ⌘E" },
+    { done: tour.filled, text: "Open “Join the club”. The form fills itself" },
+    { done: tour.mailed, text: "Open Mail. Alter offers a draft from what you read" },
+    { done: tour.menu, text: "Click ✦ to see what Alter knows" },
+    { done: tour.phone, text: "Scan the QR with your phone" },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
   const fromName = facts.find((f) => f.key === "name")?.value ?? "You";
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
 
@@ -443,7 +493,7 @@ export default function Demo() {
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline">Fri 3:40 PM</span>
-            <button data-toggle aria-label="Alter menu" onClick={() => setPopover((p) => !p)} className={`rounded px-2 py-0.5 text-sm ${popover ? "bg-black text-white" : "hover:bg-black/10"}`}>
+            <button data-toggle aria-label="Alter menu" onClick={toggleMenu} className={`rounded px-2 py-0.5 text-sm ${popover ? "bg-black text-white" : "hover:bg-black/10"}`}>
               ✦
             </button>
           </div>
@@ -455,6 +505,35 @@ export default function Demo() {
           <p className="mt-1 text-base text-black/60">It quietly learns you, helps when it matters, and grows into a version of you.</p>
           <p className="mt-1 text-xs text-black/40">Not a recording. Select a word and press ⌘E, or click ✦ in the menu bar.</p>
         </div>
+
+        {/* first-run guide, styled like an OS notification; shown only where it fits beside the window */}
+        {coach === "open" ? (
+          <div className="absolute left-4 top-44 z-10 hidden w-60 rounded-2xl border border-black/10 bg-white/85 p-4 text-sm shadow-xl backdrop-blur min-[1360px]:block">
+            <div className="flex items-center justify-between">
+              <p className="font-medium">
+                Try Alter <span className="text-black/40">{doneCount}/{steps.length}</span>
+              </p>
+              <button aria-label="Hide guide" onClick={() => foldCoach("folded")} className="text-black/40 hover:text-black">✕</button>
+            </div>
+            <ul className="mt-2 space-y-2">
+              {steps.map((s) => (
+                <li key={s.text} className={`flex gap-2 ${s.done ? "text-black/40" : "text-black/80"}`}>
+                  <span className={s.done ? "text-green-600" : "text-black/30"}>{s.done ? "✓" : "○"}</span>
+                  <span className={s.done ? "line-through" : ""}>{s.text}</span>
+                </li>
+              ))}
+            </ul>
+            {doneCount === steps.length && (
+              <p className="mt-3 text-xs text-black/60">
+                That is the loop: Alter learned, helped, and you stayed in control. <a href="#how" className="underline">How it works</a>
+              </p>
+            )}
+          </div>
+        ) : (
+          <button onClick={() => foldCoach("open")} className="absolute left-4 top-44 z-10 hidden rounded-full bg-white/85 px-3 py-1.5 text-xs shadow backdrop-blur min-[1360px]:block">
+            Guide
+          </button>
+        )}
 
         {/* menu-bar window: what Alter knows + settings */}
         {popover && (
@@ -518,7 +597,7 @@ export default function Demo() {
             )}
             <p className="mt-3 text-xs text-black/50">Never read or learned: passwords, payment fields, banking sites.</p>
             <p className="mt-1 text-xs text-black/40">Vault for sensitive items: coming next.</p>
-            <button onClick={() => { setShowPhone(true); setPopover(false); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">See it on your phone</button>
+            <button onClick={() => { openPhone(); setPopover(false); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">See it on your phone</button>
           </div>
         )}
 
@@ -589,7 +668,7 @@ export default function Demo() {
                     <p className="text-xs uppercase tracking-wide text-black/40">{ARTICLE.kicker}</p>
                     <h3 className="mt-1 text-2xl font-semibold">{ARTICLE.title}</h3>
                     {ARTICLE.paras.map((p, i) => (
-                      <p key={i} className={`${i === 0 ? "mt-4" : "mt-3"} leading-relaxed text-black/80`}>{p}</p>
+                      <p key={i} className={`${i === 0 ? "mt-4" : "mt-3"} leading-relaxed text-black/80`}>{withHints(p)}</p>
                     ))}
                     <p className="mt-6 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-black/50">Just read. After a few seconds Alter offers a gist on its own. Or select a word and press ⌘E, then open Mail from the Dock.</p>
                   </article>
@@ -711,7 +790,7 @@ export default function Demo() {
               {icon}
             </button>
           ))}
-          <button data-toggle aria-label="Alter" onClick={() => setPopover((p) => !p)} className="flex h-12 w-12 items-center justify-center rounded-xl bg-black text-xl text-white">✦</button>
+          <button data-toggle aria-label="Alter" onClick={toggleMenu} className="flex h-12 w-12 items-center justify-center rounded-xl bg-black text-xl text-white">✦</button>
         </div>
 
         {/* Raycast-style palette: ⌘E with nothing selected */}
