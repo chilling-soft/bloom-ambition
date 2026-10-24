@@ -22,7 +22,7 @@ The demo is a tiny OS in the browser: a menu bar, a Dock, and three apps (Browse
 
 ## Gamification, kept small
 
-Rings, one per interest (바이오, AI·개발, 이스포츠), fill with minutes of real activity: reading, asking, briefings. A closed ring shows “완료했어요”. Nothing is ever taken away; an unfilled ring is just empty today. The rings live in the menu-bar window and the dashboard, never in the way of what you are doing.
+Rings, one per interest (생활, 바이오, AI·개발, 이스포츠), count the tasks you finish today (a summary you took, a form filled, a next step done), against a small daily goal you set. A closed ring shows “완료했어요”. Nothing is ever taken away; an unfilled ring is just empty today. The rings live in the menu-bar window and the dashboard, never in the way of what you are doing.
 
 ## What is real today, and what is next
 
