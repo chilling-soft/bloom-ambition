@@ -19,6 +19,7 @@ export type Handoff = {
 
 export type Session = {
   facts: Fact[];
+  minutes?: Record<string, number>; // daily ring minutes, so the phone shows the same rings
   handoff: Handoff | null;
   updatedAt: number;
 };

@@ -28,6 +28,7 @@ export const sessionSchema = z.object({
       }),
     )
     .max(50),
+  minutes: z.record(z.string().max(20), z.number().min(0).max(600)).optional(),
   handoff: z
     .object({
       title: z.string().max(120),
