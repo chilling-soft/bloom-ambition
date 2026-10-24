@@ -18,7 +18,7 @@ export const sessionSchema = z.object({
       z.object({
         id: z.string().max(64),
         kind: z.enum(["identity", "interest", "activity", "habit"]),
-        key: z.string().max(40),
+        key: z.string().max(120),
         label: z.string().max(60),
         value: z.string().max(300),
         source: z.string().max(80),
@@ -27,8 +27,8 @@ export const sessionSchema = z.object({
         userEdited: z.boolean().optional(),
       }),
     )
-    .max(50),
-  minutes: z.record(z.string().max(20), z.number().min(0).max(600)).optional(),
+    .max(80),
+  done: z.record(z.string().max(20), z.number().min(0).max(50)).optional(),
   handoff: z
     .object({
       title: z.string().max(120),
@@ -54,14 +54,19 @@ export async function saveSession(code: string, s: Session) {
 }
 
 const counts = new Map<string, number>();
+const GLOBAL_DAILY = 6000; // protects the credits if the public link is hammered
+const today = () => new Date().toISOString().slice(0, 10);
 
-// per-session cap on Claude calls so open demo links can't burn credits
-export async function allow(code: string, limit = 60): Promise<boolean> {
+// per-session cap on Claude calls plus a global daily cap; false means "over the limit"
+export async function allow(code: string, limit = 300): Promise<boolean> {
   if (redis) {
     const k = `alter:rl:${code}`;
     const n = await redis.incr(k);
     if (n === 1) await redis.expire(k, 60 * 60 * 24);
-    return n <= limit;
+    const gk = `alter:rl:global:${today()}`;
+    const gn = await redis.incr(gk);
+    if (gn === 1) await redis.expire(gk, 60 * 60 * 48);
+    return n <= limit && gn <= GLOBAL_DAILY;
   }
   const n = (counts.get(code) ?? 0) + 1;
   counts.set(code, n);

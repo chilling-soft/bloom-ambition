@@ -1,46 +1,39 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { INTERESTS, isClosed, PICKS, WEEK, type Minutes } from "@/lib/rings";
+import { INTERESTS, isClosed, PICKS, remaining, WEEK, type Done } from "@/lib/rings";
+import { WORK, type ResumeAction } from "@/lib/work";
 import { MiniRings, Rings } from "./Rings";
 
-export type ResumeAction = { type: "tab"; tab: "article" | "signup" | "bank" } | { type: "app"; app: "browser" | "mail" } | { type: "note"; text: string };
-
-type Work = { icon: string; iconColor: string; title: string; where: string; device: string; action: ResumeAction };
-
-// what Alter picked up from your screens: app, device, when, and how far you got
-const WORK: Work[] = [
-  { icon: "카드", iconColor: "#111111", title: "카드 자동납부 계좌 변경", where: "카드사 사이트 · 어제 22:10 · 2/3단계", device: "노트북", action: { type: "tab", tab: "bank" } },
-  { icon: "{ }", iconColor: "#4338CA", title: "diffusion-toy / train.py", where: "VS Code · 11:40 · 에러에서 멈춤", device: "노트북", action: { type: "note", text: "VS Code는 데스크톱 센서가 있어야 이어갈 수 있어요. 다음 단계에서 지원해요." } },
-  { icon: "PDF", iconColor: "#047857", title: "AlphaFold 3 — diffusion 모듈", where: "브라우저 · 12:45 · 62% 읽음", device: "폰", action: { type: "tab", tab: "article" } },
-  { icon: "▶", iconColor: "#BE123C", title: "T1 vs GEN 3세트 시청중", where: "유튜브 · 12:50 · 14분 남음", device: "폰", action: { type: "note", text: "유튜브는 폰에서 이어서 볼 수 있어요. (데모에서는 연결하지 않았어요)" } },
-  { icon: "메일", iconColor: "#111111", title: "교수님께 답장 — 발표 자료 형식", where: "Mail · 09:12 · 초안 저장됨", device: "노트북", action: { type: "app", app: "mail" } },
-];
-
 const mono = "font-mono text-[11px] tracking-[0.08em] text-black/50";
+const STARTERS = ["나 이제 뭘 해야 돼?", "오늘 뭐 남았어?", "화요일 발표 준비, 어디부터 할까?"];
+const TAG: Record<string, string> = { life: "bg-amber-700/10 text-amber-800", ai: "bg-indigo-600/10 text-indigo-700", bio: "bg-emerald-600/10 text-emerald-700", esports: "bg-rose-600/10 text-rose-700" };
+const TAG_NAME: Record<string, string> = { life: "생활", ai: "AI·개발", bio: "바이오", esports: "이스포츠" };
 
 type SR = { new (): { lang: string; onresult: (e: { results: { 0: { 0: { transcript: string } } } }) => void; onend: () => void; start: () => void } };
+export type AskResult = { ok: boolean; text: string };
 
-export function Dashboard({ minutes, onResume, onAsk }: { minutes: Minutes; onResume: (a: ResumeAction) => void; onAsk: (q: string) => Promise<string> }) {
+export function Dashboard({ done, onResume, onAsk }: { done: Done; onResume: (a: ResumeAction) => void; onAsk: (q: string) => Promise<AskResult> }) {
   const [q, setQ] = useState("");
-  const [answer, setAnswer] = useState<{ q: string; text: string } | null>(null);
+  const [answer, setAnswer] = useState<{ q: string; text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const closed = INTERESTS.filter((i) => isClosed(minutes, i));
-  const headline = closed.length ? `${closed.map((i) => i.name.split(" ")[0]).join(", ")} 링을 완료했어요` : "오늘의 링";
+  const closed = INTERESTS.filter((i) => isClosed(done, i));
+  const headline = closed.length ? `${closed.map((i) => i.short).join(", ")} 링을 완료했어요` : "오늘의 링";
 
   const submit = async (text: string, speak = false) => {
     const t = text.trim();
     if (!t) return;
+    setQ(t);
     setBusy(true);
-    setAnswer({ q: t, text: "…" });
+    setAnswer(null);
     const a = await onAsk(t);
-    setAnswer({ q: t, text: a });
+    setAnswer({ q: t, text: a.text, ok: a.ok });
     setBusy(false);
-    if (speak && "speechSynthesis" in window) {
-      const u = new SpeechSynthesisUtterance(a);
+    if (a.ok && speak && "speechSynthesis" in window) {
+      const u = new SpeechSynthesisUtterance(a.text);
       u.lang = "ko-KR";
       window.speechSynthesis.speak(u);
     }
@@ -51,18 +44,14 @@ export function Dashboard({ minutes, onResume, onAsk }: { minutes: Minutes; onRe
     const w = window as unknown as { SpeechRecognition?: SR; webkitSpeechRecognition?: SR };
     const Rec = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!Rec) {
-      setAnswer({ q: "", text: "이 브라우저는 음성 인식을 지원하지 않아요. 적어서 물어봐 주세요." });
+      setAnswer({ q: "", text: "이 브라우저는 음성 인식을 지원하지 않아요. 적어서 물어봐 주세요.", ok: false });
       inputRef.current?.focus();
       return;
     }
     const rec = new Rec();
     rec.lang = "ko-KR";
     setListening(true);
-    rec.onresult = (e) => {
-      const said = e.results[0][0].transcript;
-      setQ(said);
-      void submit(said, true);
-    };
+    rec.onresult = (e) => void submit(e.results[0][0].transcript, true);
     rec.onend = () => setListening(false);
     rec.start();
   };
@@ -91,32 +80,43 @@ export function Dashboard({ minutes, onResume, onAsk }: { minutes: Minutes; onRe
         </form>
       </div>
 
-      {answer && (
-        <div className="rounded-2xl bg-white p-4 text-sm shadow-sm">
-          {answer.q && <p className="text-xs text-black/40">{answer.q}</p>}
-          <p className="mt-1 text-black/80">{busy ? "…" : answer.text}</p>
+      {/* starter questions: a first-time visitor sees what to try, and each one has a good answer */}
+      {!answer && !busy && (
+        <div className="-mt-1 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs text-black/40">이렇게 물어보세요</span>
+          {STARTERS.map((s) => (
+            <button key={s} onClick={() => void submit(s)} className="rounded-full border border-black/10 bg-white px-3 py-1 text-black/70 hover:bg-black/[0.03]">{s}</button>
+          ))}
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[300px_minmax(0,1fr)_300px]">
-        <section aria-label="오늘의 링" className="flex flex-col gap-4 rounded-2xl bg-white p-5 shadow-sm">
+      {busy && <div className="rounded-2xl bg-white p-4 text-sm text-black/50 shadow-sm">✦ 오늘 하루를 보고 있어요…</div>}
+      {answer && (
+        <div className={`rounded-2xl p-4 text-sm shadow-sm ${answer.ok ? "bg-white" : "bg-amber-50"}`}>
+          {answer.q && <p className="text-xs text-black/40">{answer.q}</p>}
+          <p className={`mt-1 whitespace-pre-line ${answer.ok ? "text-black/80" : "text-amber-900"}`}>{answer.text}</p>
+          <div className="mt-2 flex gap-2 text-xs">
+            {!answer.ok && answer.q && <button onClick={() => void submit(answer.q)} className="rounded-full bg-black px-3 py-1 text-white">다시 시도</button>}
+            <button onClick={() => { setAnswer(null); setQ(""); }} className="rounded-full border border-black/15 px-3 py-1 text-black/60">닫기</button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)_300px]">
+        <section aria-label="오늘의 링" className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="text-base font-semibold">{headline}</h2>
           <div className="flex justify-center">
-            <Rings minutes={minutes} size={176} />
+            <Rings done={done} size={170} />
           </div>
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2">
             {INTERESTS.map((i) => (
-              <div key={i.id} className="flex items-center gap-2 text-sm">
-                <span className="h-2 w-2 rounded-full" style={{ background: i.color }} />
-                <span className="flex-1 font-medium">{i.name}</span>
-                {isClosed(minutes, i) ? (
-                  <span className="font-semibold text-rose-700">닫힘</span>
-                ) : (
-                  <span>
-                    <b>{minutes[i.id]}</b>
-                    <span className="text-black/50">/{i.goal}분</span>
-                  </span>
-                )}
+              <div key={i.id} className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="h-2 w-2 rounded-full" style={{ background: i.color }} />
+                  <span className="flex-1 font-medium">{i.name}</span>
+                  {isClosed(done, i) ? <span className="font-semibold text-rose-700">닫힘</span> : <span><b>{done[i.id]}</b><span className="text-black/50"> /{i.goal}</span></span>}
+                </div>
+                <span className="pl-4 text-xs text-black/50">오늘 {i.goal}개 · {i.why}</span>
               </div>
             ))}
           </div>
@@ -142,16 +142,17 @@ export function Dashboard({ minutes, onResume, onAsk }: { minutes: Minutes; onRe
                 <span className="block truncate text-[15px] font-medium">{w.title}</span>
                 <span className="block text-xs text-black/50">{w.where}</span>
               </span>
+              <span className={`flex-none rounded-full px-2 py-0.5 text-xs ${TAG[w.ring]}`}>{TAG_NAME[w.ring]}</span>
               <span className="flex-none rounded-full bg-black/5 px-2.5 py-0.5 text-xs text-black/60">{w.device}</span>
               <span className="flex-none rounded-full bg-black px-3.5 py-1.5 text-[13px] font-medium text-white">이어서</span>
             </button>
           ))}
         </section>
 
-        <section aria-label="오늘 볼 것" className="flex flex-col gap-2.5 rounded-2xl bg-white p-5 shadow-sm">
+        <section aria-label="오늘 태스크" className="flex flex-col gap-2.5 rounded-2xl bg-white p-5 shadow-sm">
           <div className="flex items-baseline gap-2">
-            <h2 className="flex-1 text-base font-semibold">오늘 볼 것</h2>
-            <span className={mono}>3개 · 약 35분</span>
+            <h2 className="flex-1 text-base font-semibold">오늘 태스크</h2>
+            <span className={mono}>{remaining(done)}개 남음</span>
           </div>
           {PICKS.map((p) => (
             <div key={p.title} className="flex flex-col gap-1.5 rounded-xl bg-black/[0.03] p-3">
@@ -171,6 +172,7 @@ export function Dashboard({ minutes, onResume, onAsk }: { minutes: Minutes; onRe
               <span className="rounded-full bg-emerald-600/10 px-2.5 py-0.5 text-emerald-700">논문 6</span>
               <span className="rounded-full bg-indigo-600/10 px-2.5 py-0.5 text-indigo-700">릴리스 4</span>
               <span className="rounded-full bg-rose-600/10 px-2.5 py-0.5 text-rose-700">경기 1 · 뉴스 9</span>
+              <span className="rounded-full bg-amber-700/10 px-2.5 py-0.5 text-amber-800">납부일 1 · 장보기 1</span>
             </div>
           </div>
         </section>

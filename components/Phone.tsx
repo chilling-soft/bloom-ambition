@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { INTERESTS, isClosed, PICKS, START_MINUTES, type Minutes } from "@/lib/rings";
+import { INTERESTS, isClosed, PICKS, START_DONE, type Done } from "@/lib/rings";
 import type { Session } from "@/lib/types";
 import { Rings } from "./Rings";
 
@@ -33,8 +33,8 @@ export default function Phone({ code }: { code: string }) {
     dirty.current = false;
   };
 
-  const minutes = { ...START_MINUTES, ...(s?.minutes ?? {}) } as Minutes;
-  const closed = INTERESTS.filter((i) => isClosed(minutes, i)).map((i) => i.name.split(" ")[0]);
+  const done = { ...START_DONE, ...(s?.done ?? {}) } as Done;
+  const closed = INTERESTS.filter((i) => isClosed(done, i)).map((i) => i.short);
   const h = s?.handoff;
 
   return (
@@ -44,18 +44,18 @@ export default function Phone({ code }: { code: string }) {
       <section aria-label="오늘의 링" className="mt-3 rounded-2xl bg-white p-4 shadow-sm">
         <h1 className="text-base font-semibold">{closed.length ? `${closed.join(", ")} 링을 완료했어요` : "오늘의 링"}</h1>
         <div className="mt-3 flex items-center gap-4">
-          <Rings minutes={minutes} size={120} stroke={20} />
+          <Rings done={done} size={120} />
           <div className="flex flex-1 flex-col gap-2">
             {INTERESTS.map((i) => (
               <div key={i.id} className="flex items-center gap-2 text-sm">
                 <span className="h-2 w-2 rounded-full" style={{ background: i.color }} />
                 <span className="flex-1 font-medium">{i.name}</span>
-                {isClosed(minutes, i) ? (
+                {isClosed(done, i) ? (
                   <span className="font-semibold text-rose-700">닫힘</span>
                 ) : (
                   <span>
-                    <b>{minutes[i.id]}</b>
-                    <span className="text-black/50">/{i.goal}분</span>
+                    <b>{done[i.id]}</b>
+                    <span className="text-black/50"> /{i.goal}</span>
                   </span>
                 )}
               </div>
@@ -80,10 +80,10 @@ export default function Phone({ code }: { code: string }) {
         )}
       </section>
 
-      <section aria-label="오늘 볼 것" className="mt-3 rounded-2xl bg-white p-4 shadow-sm">
+      <section aria-label="오늘 태스크" className="mt-3 rounded-2xl bg-white p-4 shadow-sm">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-base font-semibold">오늘 볼 것</h2>
-          <span className="font-mono text-[11px] text-black/40">3개 · 약 35분</span>
+          <h2 className="text-base font-semibold">오늘 태스크</h2>
+          <span className="font-mono text-[11px] text-black/40">{PICKS.length}개</span>
         </div>
         <ul className="mt-3 space-y-2">
           {PICKS.map((p) => (
