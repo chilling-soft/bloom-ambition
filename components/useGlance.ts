@@ -43,11 +43,12 @@ type Args = {
   learning: boolean;
   watching: boolean; // the user is on the article, in the browser
   proactivity: Proactivity;
+  onEngage: (kind: "gist" | "ask") => void; // reading or asking counts toward the daily rings
 };
 
-// Alter reads along with the page and offers a gist on its own. How you react (open or dismiss)
-// becomes a "habit" fact, and after repeated dismissals it stops offering by itself.
-export function useGlance({ code, facts, setFacts, learning, watching, proactivity }: Args) {
+// Alter reads along with the page and offers help on its own. How you react (open or pass)
+// becomes a "habit" fact, and after repeated passes it stops offering by itself.
+export function useGlance({ code, facts, setFacts, learning, watching, proactivity, onEngage }: Args) {
   const [glance, setGlance] = useState<Glance | null>(null);
   const [nudges, setNudges] = useState<Nudges>(readNudges);
   const tried = useRef(false);
@@ -79,7 +80,7 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
     [code, context],
   );
 
-  // after a few quiet seconds on the page, prepare a gist in the background and show a small chip
+  // after a few quiet seconds on the page, prepare help in the background and offer it
   useEffect(() => {
     if (!watching || !code || !autoOffer || tried.current) return;
     const t = setTimeout(() => {
@@ -103,14 +104,15 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
     setGlance({ ...glance, status: "open", counted: true });
     if (glance.counted) return;
     const n = bump("opened");
+    onEngage("gist");
     if (learning) {
       setFacts((f) =>
         upsert(f, {
           kind: "habit",
           key: "habit:gist",
-          label: "How I help",
-          value: "Shows a short gist of long pages",
-          source: `You opened it ${n.opened}×`,
+          label: "도와주는 방식",
+          value: "긴 글은 핵심 요약을 먼저 보여줘요",
+          source: `${n.opened}번 열어봤어요`,
           confidence: Math.min(1, 0.4 + 0.15 * n.opened),
         }),
       );
@@ -127,9 +129,9 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
         upsert(f, {
           kind: "habit",
           key: "habit:gist",
-          label: "How I help",
-          value: "Prefers to ask for summaries (⌘E)",
-          source: `You passed on it ${n.dismissed}×`,
+          label: "도와주는 방식",
+          value: "요약은 ⌘E로 부를 때만 보여줘요",
+          source: `${n.dismissed}번 넘겼어요`,
           confidence: 0.7,
         }),
       );
@@ -145,14 +147,15 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
     if (!code) return;
     setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: "…" } });
     const r = await post("/api/ask", { code, q, context: ARTICLE_TEXT, facts: context() });
-    const text: string = r?.text ?? "Could not reach Alter. Try again.";
+    const text: string = r?.text ?? "지금은 Alter에 닿지 않아요. 잠시 뒤에 다시 해 주세요.";
     setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: text } });
-    if (learning) setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "Asked", value: q, source: "Esports Daily", confidence: 0.5 }));
+    onEngage("ask");
+    if (learning) setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q, source: "Protein Notes", confidence: 0.5 }));
   };
 
   // a new page visit starts fresh
   const reset = () => {
-    if (glance?.status === "ready") recordIgnored(); // offered, never opened
+    if (glance?.status === "ready" && !glance.counted) recordIgnored(); // offered, never opened
     tried.current = false;
     setGlance(null);
   };
