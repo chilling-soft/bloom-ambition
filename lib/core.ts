@@ -25,12 +25,14 @@ const TOKEN_KEY: Record<string, string> = {
   email: "email",
   "street-address": "address",
   "address-line1": "address",
+  organization: "affiliation",
 };
 
 const LABEL_RULES: [RegExp, string][] = [
-  [/e-?mail/i, "email"],
-  [/address/i, "address"],
-  [/\bname\b/i, "name"],
+  [/이메일|e-?mail/i, "email"],
+  [/소속|affiliation|organization/i, "affiliation"],
+  [/주소|address/i, "address"],
+  [/이름|\bname\b/i, "name"],
 ];
 
 export const isDeniedHost = (host: string) => /bank|pay|wallet|card/i.test(host);

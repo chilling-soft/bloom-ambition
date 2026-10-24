@@ -11,21 +11,19 @@ const body = z.object({
 });
 
 const CANNED: Record<string, string> = {
-  snowballing:
-    "Snowballing means turning an early advantage into more gold and map control, so every later fight gets easier to win.",
-  baron:
-    "Baron is the strongest neutral objective. Taking it gives the whole team a temporary buff that makes pushing and ending the game far easier.",
+  "diffusion 모듈": "잡음을 걷어내는 법을 배운 생성 모델이에요. 여기서는 그 방법을 원자 좌표에 적용해, 틀 없이 복합체 구조를 바로 만들어요.",
+  pairformer: "AlphaFold 3의 중심 모듈로, 아미노산 쌍 사이의 관계를 정리해 구조 예측의 바탕을 만들어요.",
+  잡음: "원래 값에 무작위로 섞인 흐트러짐이에요. diffusion 모델은 이 흐트러짐을 걷어내는 방법을 학습해요.",
 };
 
 const SYSTEM =
-  "You are Alter, a quiet assistant inside the user's browser. Explain the selected term in at most two plain sentences, using the surrounding text for meaning. No preamble, no markdown.";
+  "당신은 사용자의 브라우저 곁에서 조용히 일하는 Alter입니다. 선택한 용어를 주변 글의 맥락으로 두 문장 이내로 쉽게 한국어로 설명하세요. 서두나 마크다운 없이 답하세요.";
 
 export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "bad body" }, { status: 400 });
   const { code, term, context } = parsed.data;
-  const canned =
-    CANNED[term.toLowerCase()] ?? `"${term}" is used here in the context of the article you are reading.`;
+  const canned = CANNED[term.toLowerCase()] ?? `"${term}"은(는) 지금 읽고 있는 글에서 쓰인 용어예요.`;
 
   if (!process.env.ANTHROPIC_API_KEY || !(await allow(code))) {
     return NextResponse.json({ text: canned, live: false });
@@ -34,8 +32,8 @@ export async function POST(req: Request) {
     const { text } = await generateText({
       model: anthropic("claude-haiku-5-5"),
       system: SYSTEM,
-      prompt: `Selected term: ${term}\nSurrounding text: ${context}`,
-      maxOutputTokens: 200,
+      prompt: `선택한 용어: ${term}\n주변 글: ${context}`,
+      maxOutputTokens: 250,
       abortSignal: AbortSignal.timeout(8000),
     });
     return NextResponse.json({ text: text.trim() || canned, live: true });
