@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FAIL_TEXT, postJson } from "@/lib/api";
+import { askStream, FAIL_TEXT, postJson } from "@/lib/api";
 import { ARTICLE, ARTICLE_TEXT } from "@/lib/article";
 import { upsert } from "@/lib/facts";
 import type { Fact } from "@/lib/types";
@@ -167,7 +167,7 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
   const ask = async (q: string) => {
     if (!code) return;
     setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: "…" }, errors: without(g.errors, q) });
-    const r = await postJson<{ text: string }>("/api/ask", { code, q, context: ARTICLE_TEXT, facts: context() });
+    const r = await askStream({ code, q, context: ARTICLE_TEXT, facts: context() }, (soFar) => setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: soFar } }));
     if (!r.ok) {
       setGlance((g) => g && { ...g, answers: without(g.answers, q), errors: { ...g.errors, [q]: FAIL_TEXT[r.reason] } });
       return;

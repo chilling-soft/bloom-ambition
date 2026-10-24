@@ -22,3 +22,35 @@ export async function postJson<T>(url: string, body: unknown): Promise<Result<T>
     return { ok: false, reason: "network" };
   }
 }
+
+// a reply that stopped mid-sentence is cut back to its last full sentence
+function tidy(text: string): string {
+  const t = text.trim();
+  if (/[.!?。요다죠까]["”)]?$/.test(t)) return t;
+  const cut = Math.max(t.lastIndexOf("."), t.lastIndexOf("다"), t.lastIndexOf("요"));
+  return cut > 40 ? t.slice(0, cut + 1) : t;
+}
+
+// POST that reads the reply as it is written; onText gets the text so far. loose: a fixed-format reply (a summary line) is kept as is
+export async function askStream(body: unknown, onText: (soFar: string) => void, loose = false): Promise<Result<{ text: string }>> {
+  try {
+    const r = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok || !r.body) {
+      const j = await r.json().catch(() => null);
+      return { ok: false, reason: (j?.reason as FailReason | undefined) ?? (r.status === 400 ? "bad_body" : "error") };
+    }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let acc = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      acc += dec.decode(value, { stream: true });
+      onText(acc);
+    }
+    const text = loose ? acc.trim() : tidy(acc);
+    return text ? { ok: true, data: { text } } : { ok: false, reason: "error" };
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+}

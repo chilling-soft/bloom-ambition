@@ -9,6 +9,7 @@ const STORE = "alter-vault";
 const SEED: Item[] = [
   { id: "v1", label: "테스트 카드", value: "4242 4242 4242 4242 · 12/29 · 123", field: "card", log: [] },
   { id: "v2", label: "계정 아이디", value: "haneul.demo", field: "account", log: [] },
+  { id: "v4", label: "계정 비밀번호", value: "demo-Passw0rd!", field: "password", log: [] },
   { id: "v3", label: "주소", value: "서울시 중구 세종대로 110 (테스트)", field: "address", log: [] },
 ];
 
@@ -68,7 +69,11 @@ export function Vault({ onClose, onFill, canFill }: { onClose: () => void; onFil
       if (stored) {
         const salt = unb64(stored.salt);
         const key = await deriveKey(pass, salt);
-        setItems(await open(stored, key));
+        const opened = await open(stored, key);
+        // a vault made before passwords were supported gets the sample one added
+        const next = opened.some((i) => i.field === "password") ? opened : [...opened, SEED.find((i) => i.field === "password")!];
+        if (next !== opened) await seal(next, key, salt);
+        setItems(next);
         setSession({ key, salt });
       } else {
         // first open: the passphrase you type now creates the vault, seeded with fake values

@@ -14,7 +14,7 @@ const TAG_NAME: Record<string, string> = { life: "생활", ai: "AI·개발", bio
 type SR = { new (): { lang: string; onresult: (e: { results: { 0: { 0: { transcript: string } } } }) => void; onend: () => void; start: () => void } };
 export type AskResult = { ok: boolean; text: string };
 
-export function Dashboard({ done, onResume, onAsk }: { done: Done; onResume: (a: ResumeAction) => void; onAsk: (q: string) => Promise<AskResult> }) {
+export function Dashboard({ done, onResume, onAsk }: { done: Done; onResume: (a: ResumeAction) => void; onAsk: (q: string, onText?: (soFar: string) => void) => Promise<AskResult> }) {
   const [q, setQ] = useState("");
   const [answer, setAnswer] = useState<{ q: string; text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,7 +30,11 @@ export function Dashboard({ done, onResume, onAsk }: { done: Done; onResume: (a:
     setQ(t);
     setBusy(true);
     setAnswer(null);
-    const a = await onAsk(t);
+    // words appear as they are written; the box replaces the spinner at the first word
+    const a = await onAsk(t, (soFar) => {
+      setBusy(false);
+      setAnswer({ q: t, text: soFar, ok: true });
+    });
     setAnswer({ q: t, text: a.text, ok: a.ok });
     setBusy(false);
     if (a.ok && speak && "speechSynthesis" in window) {

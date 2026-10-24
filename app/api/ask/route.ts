@@ -1,5 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateText } from "ai";
+import { streamText } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { allow, codeSchema } from "@/lib/server";
@@ -10,7 +10,6 @@ const body = z.object({
   code: codeSchema,
   q: z.string().min(1).max(300),
   context: z.string().max(4000).default(""),
-  loose: z.boolean().default(false), // a fixed-format reply (a summary line) need not end like a sentence
   // accept a long list and keep only the newest: a long session must never turn into a rejected request
   facts: z.array(z.object({ label: z.string().max(60), value: z.string().max(300) })).max(100).default([]),
 });
@@ -28,33 +27,21 @@ export async function POST(req: Request) {
     console.error("ask bad body", parsed.error.issues[0]?.path.join("."), parsed.error.issues[0]?.message);
     return fail("bad_body", 400);
   }
-  const { code, q, context, loose } = parsed.data;
+  const { code, q, context } = parsed.data;
   const facts = parsed.data.facts.slice(-15);
 
   if (!process.env.ANTHROPIC_API_KEY) return fail("no_key", 503);
   if (!(await allow(code))) return fail("cap", 429);
 
   const prompt = `질문: ${q}\n\n사용자가 보고 있는 글:\n${context || "(없음)"}\n\nAlter가 아는 사용자 정보:\n${facts.map((f) => `- ${f.label}: ${f.value}`).join("\n") || "(아직 없음)"}`;
-  // two tries of 12s fit inside maxDuration; most failures are a transient timeout or overload
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const { text } = await generateText({
-        model: anthropic("claude-haiku-5-5"),
-        system: SYSTEM,
-        prompt,
-        maxOutputTokens: 800,
-        abortSignal: AbortSignal.timeout(12000),
-      });
-      const t = text.trim();
-      if (!t) continue;
-      // the model sometimes stops mid-sentence: cut back to the last full sentence instead of calling it again
-      const ends = /[.!?。요다죠까]["”)]?$/.test(t);
-      if (loose || ends) return NextResponse.json({ text: t, live: true });
-      const cut = Math.max(t.lastIndexOf("."), t.lastIndexOf("다"), t.lastIndexOf("요"));
-      return NextResponse.json({ text: cut > 40 ? t.slice(0, cut + 1) : t, live: true });
-    } catch (e) {
-      console.error(`ask failed (attempt ${attempt})`, e instanceof Error ? e.message : e);
-    }
-  }
-  return fail("error", 502);
+  // streamed: the first words show up in about a second instead of after the whole reply
+  const result = streamText({
+    model: anthropic("claude-haiku-5-5"),
+    system: SYSTEM,
+    prompt,
+    maxOutputTokens: 400,
+    abortSignal: AbortSignal.timeout(20000),
+    onError: ({ error }) => console.error("ask stream failed", error instanceof Error ? error.message : error),
+  });
+  return result.toTextStreamResponse();
 }

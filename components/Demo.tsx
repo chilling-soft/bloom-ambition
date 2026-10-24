@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { FAIL_TEXT, postJson } from "@/lib/api";
+import { askStream, FAIL_TEXT, postJson } from "@/lib/api";
 import { ARTICLE, ARTICLE_TEXT } from "@/lib/article";
 import { collectFields, isDeniedHost, setValue } from "@/lib/core";
 import { upsert } from "@/lib/facts";
@@ -355,12 +355,12 @@ export default function Demo() {
   };
 
   // Alter answers from the person's whole day, not just the question: that is what makes "what should I do now?" answerable
-  const askAnything = async (q: string, loose = false): Promise<AskResult> => {
+  const askAnything = async (q: string, loose = false, onText?: (soFar: string) => void): Promise<AskResult> => {
     if (!code) return { ok: false, text: FAIL_TEXT.network };
     const reading = app === "browser" && tab === "article";
     const place = reading ? `브라우저에서 「${ARTICLE.title}」을 읽는 중` : app === "mail" ? "메일 앱" : app === "alter" ? "Alter 대시보드" : "브라우저";
     const context = dayContext({ done, place, read: handoff ? { title: handoff.title, term: handoff.term } : reading ? { title: ARTICLE.title } : null }) + (reading ? `\n\n지금 읽고 있는 글:\n${ARTICLE_TEXT}` : "");
-    const r = await postJson<{ text: string }>("/api/ask", { code, q, context, loose, facts: shareFacts().slice(0, 15).map(({ label, value }) => ({ label, value })) });
+    const r = await askStream({ code, q, context, facts: shareFacts().slice(0, 15).map(({ label, value }) => ({ label, value })) }, onText ?? (() => {}), loose);
     if (!r.ok) return { ok: false, text: FAIL_TEXT[r.reason] };
     if (learning === "on") setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q.slice(0, 120), source: "Alter", confidence: 0.5 }));
     return { ok: true, text: r.data.text };
@@ -467,7 +467,7 @@ export default function Demo() {
     const q = paletteQ.trim();
     if (!q) return;
     setPaletteA({ ok: true, text: "…" });
-    setPaletteA(await askAnything(q));
+    setPaletteA(await askAnything(q, false, (soFar) => setPaletteA({ ok: true, text: soFar })));
   };
 
   const kbRef = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -843,7 +843,7 @@ export default function Demo() {
                           <label className="block text-sm">이름{tag("name")}<input name="name" autoComplete="name" className={inp("name")} /></label>
                           <label className="block text-sm">이메일{tag("email")}<input name="email" type="email" autoComplete="email" className={inp("email")} /></label>
                           <label className="block text-sm">소속{tag("affiliation")}<input name="affiliation" autoComplete="organization" className={inp("affiliation")} /></label>
-                          <label className="block text-sm">비밀번호<span className="ml-2 text-[11px] text-black/40">절대 채우지 않아요</span><input name="password" type="password" autoComplete="new-password" className={inp("password")} /></label>
+                          <label className="block text-sm">비밀번호<span className="ml-2 text-[11px] text-black/40">Alter는 건드리지 않아요. 보관함에서 직접 채워요</span><input name="password" type="password" autoComplete="new-password" className={inp("password")} /></label>
                           <label className="block text-sm">신청 이유{tag("motivation")}<textarea name="motivation" rows={3} className={inp("motivation")} /></label>
                           {draft && (
                             <p className="text-xs text-black/50">
@@ -863,7 +863,7 @@ export default function Demo() {
                       <label className="block text-sm">아이디<input name="userid" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <label className="block text-sm">카드번호<input name="cardno" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <p className="text-xs text-black/50">Alter는 이 페이지를 읽지 않아요. 보관함에서 직접 눌러야 채워져요.</p>
-                      <label className="block text-sm">비밀번호<input type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
+                      <label className="block text-sm">비밀번호<input name="password" type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <button className="w-full rounded-lg bg-black py-2.5 text-white">로그인</button>
                     </form>
                   )}
@@ -973,7 +973,7 @@ export default function Demo() {
                 <span className="flex-1 text-center font-mono text-xs tracking-[0.14em] text-black/50">ALTER · 10월 24일 토</span>
               </div>
               <div className="min-h-0 flex-1">
-                <Dashboard done={done} onResume={resume} onAsk={(q) => askAnything(q)} />
+                <Dashboard done={done} onResume={resume} onAsk={(q, onText) => askAnything(q, false, onText)} />
               </div>
             </div>
           )}
@@ -1039,10 +1039,10 @@ export default function Demo() {
       {vault && (
         <Vault
           onClose={() => setVault(false)}
-          canFill={app === "browser" && tab === "bank"}
+          canFill={app === "browser" && (tab === "bank" || tab === "signup")}
           onFill={(values) => {
             // only the item the person tapped arrives here; the bank page itself is never read
-            const byName: Record<string, string | undefined> = { userid: values.account, cardno: values.card?.split(" · ")[0] };
+            const byName: Record<string, string | undefined> = { userid: values.account, cardno: values.card?.split(" · ")[0], password: values.password };
             for (const [n, v] of Object.entries(byName)) {
               const el = v ? contentRef.current?.querySelector<HTMLInputElement>(`input[name=${n}]`) : null;
               if (el && v) setValue(el, v);
