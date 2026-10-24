@@ -317,8 +317,8 @@ export default function Demo() {
     if (!code) return;
     setMailDrafting(true);
     const share = shareFacts();
-    share.push({ id: "just-read", label: "방금 읽은 글", value: handoff?.title ?? ARTICLE.title });
-    const r = await postJson<{ text: string; usedFactIds?: string[] }>("/api/fill", { code, label: "교수님께 보내는 짧은 답장: 방금 읽은 글을 바탕으로 발표에서 다룰 방향 한 줄", facts: share });
+    share.push({ id: "just-read", label: "읽은 논문", value: handoff?.title ?? ARTICLE.title });
+    const r = await postJson<{ text: string; usedFactIds?: string[] }>("/api/fill", { code, label: "교수님께 보내는 답장: 읽은 논문을 바탕으로 발표에서 다룰 방향을 인사와 함께", facts: share });
     setMailDrafting(false);
     if (!r.ok || !r.data.text) return setToast(`✦ ${r.ok ? FAIL_TEXT.error : FAIL_TEXT[r.reason]}`);
     setMail((m) => ({ ...m, to: m.to || "kim.prof@lab.example", subject: m.subject || "Re: 다음 주 저널클럽 발표 순서", body: r.data.text }));
