@@ -14,6 +14,8 @@ const body = z.object({
 
 const CANNED: Record<string, string> = {
   "diffusion 모듈": "잡음을 걷어내는 법을 배운 생성 모델이에요. 여기서는 그 방법을 원자 좌표에 적용해, 틀 없이 복합체 구조를 바로 만들어요.",
+  "diffusion module": "잡음을 걷어내는 법을 배운 생성 모델이에요. 여기서는 그 방법을 원자 좌표에 적용해, 틀 없이 복합체 구조를 바로 만들어요.",
+  evoformer: "AlphaFold 2에서 정렬된 서열 정보(MSA)를 오래 처리하던 블록이에요. AlphaFold 3는 이걸 더 단순한 pairformer로 바꿨어요.",
   pairformer: "AlphaFold 3의 중심 모듈로, 아미노산 쌍 사이의 관계를 정리해 구조 예측의 바탕을 만들어요.",
   잡음: "원래 값에 무작위로 섞인 흐트러짐이에요. diffusion 모델은 이 흐트러짐을 걷어내는 방법을 학습해요.",
 };
