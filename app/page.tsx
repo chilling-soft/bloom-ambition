@@ -3,6 +3,14 @@ import Demo from "@/components/Demo";
 // "live" = you can try it in the demo above. "next" = designed, not built in this submission.
 type Status = "live" | "next";
 
+// what we set out to solve, and the shape of the answer in each case
+const THESIS: [string, string][] = [
+  ["AI가 발전하면서 사람이 글을 읽고 글을 입력하는 과정이 병목이 되고 있다.", "Alter가 화면을 직접 보고 맥락을 쌓아, 입력하지 않아도 할 일이 자동 등록되고 답은 다음 행동 한 줄로 돌아오는 구조로 풀어내었다."],
+  ["다양한 관심사에 대해 배우고 따라가야 하는 현대인들을 위한 퍼스널 에이전트가 없다.", "관심사마다 앱을 나누지 않고 하나의 두뇌가 모든 맥락을 함께 쌓아, 쓸수록 나를 닮아가는 에이전트로 풀어내었다."],
+  ["기존 멀티에이전트들은 해당 세션과 창에 들어가야만 사용할 수 있는 구조이다.", "OS 단에 상주하며 기본은 침묵하다가 막혔을 때 먼저 제안하고, 어디서든 ⌘E로 부를 수 있는 구조로 풀어내었다."],
+  ["폰과 PC, 워치, 웨어러블 기기 등에 하나로 이어지는 연동 퍼스널 에이전트가 없다.", "모든 기기의 센서가 하나의 두뇌로 모여, PC에서 보던 맥락이 워치의 한 줄 제안으로 이어지는 연동 구조로 풀어내었다."],
+];
+
 const PAINS = [
   ["매번 처음부터 설명해요", "AI 채팅은 창을 열 때마다 나를 모릅니다. 읽던 글, 하던 일, 내 소속과 관심사를 다시 붙여넣어야 답이 쓸 만해져요."],
   ["같은 칸을 계속 다시 써요", "세미나 신청, 회원가입, 답장. 이름·이메일·소속은 한 번이면 충분한데 사이트마다 다시 칩니다."],
@@ -80,7 +88,25 @@ export default function Home() {
 
       <div className="relative z-10 rounded-t-3xl bg-[#faf8f5] px-4 pb-28 pt-16 shadow-[0_-24px_60px_rgba(0,0,0,0.18)]">
         <div id="how" className="mx-auto max-w-5xl scroll-mt-8 text-[15px] leading-relaxed text-black/75">
-          <h2 className="text-3xl font-semibold tracking-tight text-black">Alter가 푸는 문제</h2>
+          <h2 className="text-3xl font-semibold tracking-tight text-black">우리가 풀려던 것</h2>
+          <ol className="mt-6 space-y-4">
+            {THESIS.map(([problem, answer], i) => (
+              <li key={problem} className="grid gap-3 rounded-2xl border border-black/10 bg-white p-5 md:grid-cols-[auto_1fr_auto_1fr] md:items-start md:gap-5">
+                <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-black font-mono text-sm text-white">{i + 1}</span>
+                <div>
+                  <p className="font-mono text-[11px] tracking-wide text-black/40">문제</p>
+                  <p className="mt-1 font-semibold text-black">{problem}</p>
+                </div>
+                <span aria-hidden className="hidden self-center text-2xl text-indigo-600 md:block">→</span>
+                <div>
+                  <p className="font-mono text-[11px] tracking-wide text-indigo-600">풀이</p>
+                  <p className="mt-1 text-sm">{answer}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <h2 className="mt-20 text-3xl font-semibold tracking-tight text-black">Alter가 푸는 문제</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {PAINS.map(([t, d]) => (
               <div key={t} className="rounded-2xl border border-black/10 bg-white p-5">
