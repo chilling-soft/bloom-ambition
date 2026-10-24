@@ -4,12 +4,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { allow, codeSchema } from "@/lib/server";
 
+export const maxDuration = 30;
+
 const body = z.object({
   code: codeSchema,
   label: z.string().max(120),
-  facts: z
-    .array(z.object({ id: z.string().max(64), label: z.string().max(60), value: z.string().max(300) }))
-    .max(30),
+  // accept a long list and keep only the newest, so a long session never becomes a rejected request
+  facts: z.array(z.object({ id: z.string().max(64), label: z.string().max(60), value: z.string().max(300) })).max(100),
 });
 
 const SYSTEM =
@@ -17,8 +18,12 @@ const SYSTEM =
 
 export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "bad body" }, { status: 400 });
-  const { code, label, facts } = parsed.data;
+  if (!parsed.success) {
+    console.error("fill bad body", parsed.error.issues[0]?.path.join("."), parsed.error.issues[0]?.message);
+    return NextResponse.json({ reason: "bad_body" }, { status: 400 });
+  }
+  const { code, label } = parsed.data;
+  const facts = parsed.data.facts.slice(-20);
   const interest = facts.find((f) => f.label.includes("관심"));
   const isReply = /답장|메일|이메일/.test(label);
   const topic = interest?.value ?? "이 주제";
@@ -32,23 +37,24 @@ export async function POST(req: Request) {
     live: false,
   };
 
-  if (!process.env.ANTHROPIC_API_KEY || !(await allow(code))) return NextResponse.json(canned);
-  try {
-    const { output } = await generateText({
-      model: anthropic("claude-haiku-5-5"),
-      system: SYSTEM,
-      prompt: `칸 이름: ${label}\n사실:\n${facts.map((f) => `- [${f.id}] ${f.label}: ${f.value}`).join("\n")}`,
-      output: Output.object({ schema: z.object({ text: z.string(), usedFactIds: z.array(z.string()) }) }),
-      maxOutputTokens: 300,
-      abortSignal: AbortSignal.timeout(10000),
-    });
-    const ids = new Set(facts.map((f) => f.id));
-    return NextResponse.json({
-      text: output.text,
-      usedFactIds: output.usedFactIds.filter((i) => ids.has(i)),
-      live: true,
-    });
-  } catch {
-    return NextResponse.json(canned);
+  if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ ...canned, reason: "no_key" });
+  if (!(await allow(code))) return NextResponse.json({ ...canned, reason: "cap" });
+  const prompt = `칸 이름: ${label}\n사실:\n${facts.map((f) => `- [${f.id}] ${f.label}: ${f.value}`).join("\n")}`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { output } = await generateText({
+        model: anthropic("claude-haiku-5-5"),
+        system: SYSTEM,
+        prompt,
+        output: Output.object({ schema: z.object({ text: z.string(), usedFactIds: z.array(z.string()) }) }),
+        maxOutputTokens: 500,
+        abortSignal: AbortSignal.timeout(15000),
+      });
+      const ids = new Set(facts.map((f) => f.id));
+      return NextResponse.json({ text: output.text, usedFactIds: output.usedFactIds.filter((i) => ids.has(i)), live: true });
+    } catch (e) {
+      console.error(`fill failed (attempt ${attempt})`, e instanceof Error ? e.message : e);
+    }
   }
+  return NextResponse.json({ ...canned, reason: "error" });
 }

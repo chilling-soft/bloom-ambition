@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FAIL_TEXT, postJson } from "@/lib/api";
 import { ARTICLE, ARTICLE_TEXT } from "@/lib/article";
 import { upsert } from "@/lib/facts";
 import type { Fact } from "@/lib/types";
@@ -12,15 +13,19 @@ export type Glance = {
   gist: string[];
   questions: string[];
   answers: Record<string, string>;
+  errors: Record<string, string>; // a failed question shows its reason, never a fake answer
   why: string;
   live: boolean;
   counted: boolean; // opening was already counted as one "accepted" nudge
 };
 
+type GlanceReply = { gist: string[]; questions?: string[]; why?: string; live?: boolean };
+
 type Nudges = { opened: number; dismissed: number };
 const ZERO: Nudges = { opened: 0, dismissed: 0 };
 const KEY = "alter-nudges";
 const DWELL_MS = 3000;
+const RECENT_FACTS = 15; // what a request carries from a long session
 
 function readNudges(): Nudges {
   if (typeof window === "undefined") return ZERO;
@@ -31,10 +36,7 @@ function readNudges(): Nudges {
   }
 }
 
-const post = (url: string, body: unknown) =>
-  fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
-    .then((r) => r.json())
-    .catch(() => null);
+const without = (o: Record<string, string>, k: string) => Object.fromEntries(Object.entries(o).filter(([key]) => key !== k));
 
 type Args = {
   code: string | null;
@@ -43,7 +45,7 @@ type Args = {
   learning: boolean;
   watching: boolean; // the user is on the article, in the browser
   proactivity: Proactivity;
-  onEngage: (kind: "gist" | "ask") => void; // reading or asking counts toward the daily rings
+  onEngage: (kind: "gist") => void; // taking an offer completes a task toward the daily rings
 };
 
 // Alter reads along with the page and offers help on its own. How you react (open or pass)
@@ -52,32 +54,40 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
   const [glance, setGlance] = useState<Glance | null>(null);
   const [nudges, setNudges] = useState<Nudges>(readNudges);
   const tried = useRef(false);
+  const cache = useRef<GlanceReply | null>(null); // one gist per session: coming back to the page costs nothing
 
   const autoOffer = proactivity !== "quiet" && (nudges.dismissed < 2 || nudges.opened >= nudges.dismissed);
 
-  // only what the person told or showed Alter, never their identity details
+  // only what the person told or showed Alter, never their identity details, and only the newest few
   const context = useCallback(
-    () => facts.filter((f) => f.kind !== "identity").map(({ label, value }) => ({ label, value })),
+    () => facts.filter((f) => f.kind !== "identity").slice(0, RECENT_FACTS).map(({ label, value }) => ({ label, value })),
     [facts],
   );
+
+  const show = useCallback((r: GlanceReply, showNow: boolean) => {
+    setGlance({
+      status: showNow ? "open" : "ready",
+      gist: r.gist,
+      questions: r.questions ?? [],
+      answers: {},
+      errors: {},
+      why: r.why ?? "",
+      live: !!r.live,
+      counted: false,
+    });
+  }, []);
 
   const load = useCallback(
     async (showNow: boolean) => {
       if (!code) return;
-      setGlance({ status: showNow ? "loading" : "prefetch", gist: [], questions: [], answers: {}, why: "", live: false, counted: false });
-      const r = await post("/api/glance", { code, title: ARTICLE.title, text: ARTICLE_TEXT, facts: context() });
-      if (!r?.gist) return setGlance(null);
-      setGlance({
-        status: showNow ? "open" : "ready",
-        gist: r.gist,
-        questions: r.questions ?? [],
-        answers: {},
-        why: r.why ?? "",
-        live: !!r.live,
-        counted: false,
-      });
+      if (cache.current) return show(cache.current, showNow);
+      setGlance({ status: showNow ? "loading" : "prefetch", gist: [], questions: [], answers: {}, errors: {}, why: "", live: false, counted: false });
+      const r = await postJson<GlanceReply>("/api/glance", { code, title: ARTICLE.title, text: ARTICLE_TEXT, facts: context() });
+      if (!r.ok || !r.data.gist) return setGlance(null);
+      cache.current = r.data;
+      show(r.data, showNow);
     },
-    [code, context],
+    [code, context, show],
   );
 
   // after a few quiet seconds on the page, prepare help in the background and offer it
@@ -99,10 +109,8 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
     return next;
   };
 
-  const open = () => {
-    if (!glance) return;
-    setGlance({ ...glance, status: "open", counted: true });
-    if (glance.counted) return;
+  // taking the offer counts as "accepted" whether it opens the panel or just does something small
+  const accepted = () => {
     const n = bump("opened");
     onEngage("gist");
     if (learning) {
@@ -117,6 +125,19 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
         }),
       );
     }
+  };
+
+  const open = () => {
+    if (!glance) return;
+    setGlance({ ...glance, status: "open", counted: true });
+    if (!glance.counted) accepted();
+  };
+
+  // e.g. "easier" or "next task" from the HUD: the offer is taken, but no panel opens
+  const accept = () => {
+    if (!glance || glance.counted) return;
+    setGlance({ ...glance, counted: true });
+    accepted();
   };
 
   const minimize = () => setGlance((g) => (g && g.status === "open" ? { ...g, status: "ready" } : g));
@@ -145,12 +166,14 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
 
   const ask = async (q: string) => {
     if (!code) return;
-    setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: "…" } });
-    const r = await post("/api/ask", { code, q, context: ARTICLE_TEXT, facts: context() });
-    const text: string = r?.text ?? "지금은 Alter에 닿지 않아요. 잠시 뒤에 다시 해 주세요.";
-    setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: text } });
-    onEngage("ask");
-    if (learning) setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q, source: "Protein Notes", confidence: 0.5 }));
+    setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: "…" }, errors: without(g.errors, q) });
+    const r = await postJson<{ text: string }>("/api/ask", { code, q, context: ARTICLE_TEXT, facts: context() });
+    if (!r.ok) {
+      setGlance((g) => g && { ...g, answers: without(g.answers, q), errors: { ...g.errors, [q]: FAIL_TEXT[r.reason] } });
+      return;
+    }
+    setGlance((g) => g && { ...g, answers: { ...g.answers, [q]: r.data.text } });
+    if (learning) setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q.slice(0, 120), source: "Protein Notes", confidence: 0.5 }));
   };
 
   // a new page visit starts fresh
@@ -160,5 +183,5 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
     setGlance(null);
   };
 
-  return { glance, nudges, autoOffer, load, open, minimize, dismiss, ask, reset };
+  return { glance, nudges, autoOffer, load, open, accept, minimize, dismiss, ask, reset };
 }

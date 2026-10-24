@@ -4,11 +4,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { allow, codeSchema } from "@/lib/server";
 
+export const maxDuration = 30;
+
 const body = z.object({
   code: codeSchema,
   title: z.string().max(200),
   text: z.string().max(4000),
-  facts: z.array(z.object({ label: z.string().max(60), value: z.string().max(200) })).max(20),
+  facts: z.array(z.object({ label: z.string().max(60), value: z.string().max(300) })).max(100),
 });
 
 const SYSTEM =
@@ -26,25 +28,35 @@ const CANNED = {
 
 export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "bad body" }, { status: 400 });
-  const { code, title, text, facts } = parsed.data;
-
-  if (!process.env.ANTHROPIC_API_KEY || !(await allow(code))) return NextResponse.json({ ...CANNED, live: false });
-  try {
-    const { output } = await generateText({
-      model: anthropic("claude-haiku-5-5"),
-      system: SYSTEM,
-      prompt: `글 제목: ${title}\n\n글 내용:\n${text}\n\nAlter가 아는 사용자 정보:\n${facts.map((f) => `- ${f.label}: ${f.value}`).join("\n") || "(아직 없음)"}`,
-      // accept a few extra items and trim in code: a strict max(3) made valid answers fail validation now and then
-      output: Output.object({
-        schema: z.object({ gist: z.array(z.string()).min(1).max(8), questions: z.array(z.string()).max(8), why: z.string() }),
-      }),
-      maxOutputTokens: 800,
-      abortSignal: AbortSignal.timeout(12000),
-    });
-    return NextResponse.json({ gist: output.gist.slice(0, 3), questions: output.questions.slice(0, 3), why: output.why, live: true });
-  } catch (e) {
-    console.error("glance failed", e instanceof Error ? e.message : e);
-    return NextResponse.json({ ...CANNED, live: false });
+  if (!parsed.success) {
+    console.error("glance bad body", parsed.error.issues[0]?.path.join("."), parsed.error.issues[0]?.message);
+    return NextResponse.json({ reason: "bad_body" }, { status: 400 });
   }
+  const { code, title, text } = parsed.data;
+  const facts = parsed.data.facts.slice(-15);
+
+  if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ ...CANNED, live: false, reason: "no_key" });
+  if (!(await allow(code))) return NextResponse.json({ ...CANNED, live: false, reason: "cap" });
+
+  const prompt = `글 제목: ${title}\n\n글 내용:\n${text}\n\nAlter가 아는 사용자 정보:\n${facts.map((f) => `- ${f.label}: ${f.value}`).join("\n") || "(아직 없음)"}`;
+  // one retry: the structured answer sometimes fails to parse ("could not parse the response")
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { output } = await generateText({
+        model: anthropic("claude-haiku-5-5"),
+        system: SYSTEM,
+        prompt,
+        // accept a few extra items and trim in code: a strict max(3) failed valid answers
+        output: Output.object({
+          schema: z.object({ gist: z.array(z.string()).min(1).max(8), questions: z.array(z.string()).max(8), why: z.string() }),
+        }),
+        maxOutputTokens: 800,
+        abortSignal: AbortSignal.timeout(15000),
+      });
+      return NextResponse.json({ gist: output.gist.slice(0, 3), questions: output.questions.slice(0, 3), why: output.why, live: true });
+    } catch (e) {
+      console.error(`glance failed (attempt ${attempt})`, e instanceof Error ? e.message : e);
+    }
+  }
+  return NextResponse.json({ ...CANNED, live: false, reason: "error" });
 }

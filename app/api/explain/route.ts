@@ -4,10 +4,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { allow, codeSchema } from "@/lib/server";
 
+export const maxDuration = 30;
+
 const body = z.object({
   code: codeSchema,
   term: z.string().min(1).max(60),
-  context: z.string().max(800),
+  context: z.string().max(2000),
 });
 
 const CANNED: Record<string, string> = {
@@ -34,10 +36,11 @@ export async function POST(req: Request) {
       system: SYSTEM,
       prompt: `선택한 용어: ${term}\n주변 글: ${context}`,
       maxOutputTokens: 500, // Korean needs more tokens per sentence; 250 cut answers mid-sentence
-      abortSignal: AbortSignal.timeout(8000),
+      abortSignal: AbortSignal.timeout(15000),
     });
     return NextResponse.json({ text: text.trim() || canned, live: true });
-  } catch {
-    return NextResponse.json({ text: canned, live: false });
+  } catch (e) {
+    console.error("explain failed", e instanceof Error ? e.message : e);
+    return NextResponse.json({ text: canned, live: false, reason: "error" });
   }
 }
