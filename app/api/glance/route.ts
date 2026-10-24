@@ -44,6 +44,8 @@ export async function POST(req: Request) {
     try {
       const { output } = await generateText({
         model: anthropic("claude-haiku-5-5"),
+    // the model otherwise spends its output budget on hidden thinking: replies came back cut short, empty and slow
+    providerOptions: { anthropic: { thinking: { type: "disabled" } } },
         system: SYSTEM,
         prompt,
         // accept a few extra items and trim in code: a strict max(3) failed valid answers

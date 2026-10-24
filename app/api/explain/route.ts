@@ -33,6 +33,8 @@ export async function POST(req: Request) {
   try {
     const { text } = await generateText({
       model: anthropic("claude-haiku-5-5"),
+    // the model otherwise spends its output budget on hidden thinking: replies came back cut short, empty and slow
+    providerOptions: { anthropic: { thinking: { type: "disabled" } } },
       system: SYSTEM,
       prompt: `선택한 용어: ${term}\n주변 글: ${context}`,
       maxOutputTokens: 500, // Korean needs more tokens per sentence; 250 cut answers mid-sentence

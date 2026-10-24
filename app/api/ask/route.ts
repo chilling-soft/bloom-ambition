@@ -37,9 +37,11 @@ export async function POST(req: Request) {
   // streamed: the first words show up in about a second instead of after the whole reply
   const result = streamText({
     model: anthropic("claude-haiku-5-5"),
+    // the model otherwise spends its output budget on hidden thinking: replies came back cut short, empty and slow
+    providerOptions: { anthropic: { thinking: { type: "disabled" } } },
     system: SYSTEM,
     prompt,
-    maxOutputTokens: 260,
+    maxOutputTokens: 400,
     abortSignal: AbortSignal.timeout(20000),
     onError: ({ error }) => console.error("ask stream failed", error instanceof Error ? error.message : error),
   });
