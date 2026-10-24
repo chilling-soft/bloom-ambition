@@ -54,6 +54,8 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
   const [glance, setGlance] = useState<Glance | null>(null);
   const [nudges, setNudges] = useState<Nudges>(readNudges);
   const tried = useRef(false);
+  const engaged = useRef(false); // opened or dismissed once this visit: never offered again unprompted
+  const seq = useRef(0); // the newest request wins; a late prefetch reply must not undo an opened or dismissed gist
   const cache = useRef<GlanceReply | null>(null); // one gist per session: coming back to the page costs nothing
 
   const autoOffer = proactivity !== "quiet" && (nudges.dismissed < 2 || nudges.opened >= nudges.dismissed);
@@ -80,19 +82,21 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
   const load = useCallback(
     async (showNow: boolean) => {
       if (!code) return;
+      const mine = ++seq.current;
+      if (showNow) engaged.current = true;
       if (cache.current) return show(cache.current, showNow);
       setGlance({ status: showNow ? "loading" : "prefetch", gist: [], questions: [], answers: {}, errors: {}, why: "", live: false, counted: false });
       const r = await postJson<GlanceReply>("/api/glance", { code, title: ARTICLE.title, text: ARTICLE_TEXT, facts: context() });
-      if (!r.ok || !r.data.gist) return setGlance(null);
+      if (!r.ok || !r.data.gist) return seq.current === mine ? setGlance(null) : undefined;
       cache.current = r.data;
-      show(r.data, showNow);
+      if (seq.current === mine) show(r.data, showNow);
     },
     [code, context, show],
   );
 
   // after a few quiet seconds on the page, prepare help in the background and offer it
   useEffect(() => {
-    if (!watching || !code || !autoOffer || tried.current) return;
+    if (!watching || !code || !autoOffer || tried.current || engaged.current) return;
     const t = setTimeout(() => {
       tried.current = true;
       void load(proactivity === "eager");
@@ -129,6 +133,7 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
 
   const open = () => {
     if (!glance) return;
+    engaged.current = true;
     setGlance({ ...glance, status: "open", counted: true });
     if (!glance.counted) accepted();
   };
@@ -136,6 +141,7 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
   // e.g. "easier" or "next task" from the HUD: the offer is taken, but no panel opens
   const accept = () => {
     if (!glance || glance.counted) return;
+    engaged.current = true;
     setGlance({ ...glance, counted: true });
     accepted();
   };
@@ -160,6 +166,8 @@ export function useGlance({ code, facts, setFacts, learning, watching, proactivi
   };
 
   const dismiss = () => {
+    engaged.current = true;
+    seq.current++;
     setGlance(null);
     recordIgnored();
   };
