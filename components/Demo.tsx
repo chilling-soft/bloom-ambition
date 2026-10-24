@@ -315,28 +315,31 @@ export default function Demo() {
 
   // cross-app moment: what was read in the Browser becomes the draft in Mail
   const draftMail = async () => {
-    if (!code) return;
+    if (!code) return "";
     setMailDrafting(true);
     const share = shareFacts();
-    share.push({ id: "just-read", label: "읽은 논문", value: handoff?.title ?? ARTICLE.title });
+    share.push({ id: "just-read", label: "읽은 논문", value: ARTICLE.short });
     const r = await postJson<{ text: string; usedFactIds?: string[] }>("/api/fill", { code, label: "교수님께 보내는 답장: 읽은 논문을 바탕으로 발표에서 다룰 방향을 인사와 함께", facts: share });
     setMailDrafting(false);
-    if (!r.ok || !r.data.text) return setToast(`✦ ${r.ok ? FAIL_TEXT.error : FAIL_TEXT[r.reason]}`);
+    if (!r.ok || !r.data.text) {
+      setToast(`✦ ${r.ok ? FAIL_TEXT.error : FAIL_TEXT[r.reason]}`);
+      return "";
+    }
     setMail((m) => ({ ...m, to: m.to || "kim.prof@lab.example", subject: m.subject || "Re: 다음 주 저널클럽 발표 순서", body: r.data.text }));
     setMailUsed(r.data.usedFactIds ?? []);
     setMailDraft(r.data.text);
     setMarks({ body: "방금 읽은 글로 초안", subject: "방금 읽은 글로 초안", to: "받은 편지에서" });
     setFilled(true);
     setTour((t) => (t.mailed ? t : { ...t, mailed: true }));
+    return r.data.text;
   };
 
   // sending an edited draft is the clearest signal of taste: Alter reads the difference and keeps one rule
-  const sendMail = async () => {
-    const edited = mail.body.trim();
-    if (!mailDraft || !edited || edited === mailDraft) return setToast("✦ 보냈어요 (데모)");
+  const learnFrom = async (draftText: string, edited: string) => {
+    if (!draftText || !edited || edited === draftText) return setToast("✦ 보냈어요 (데모)");
     setToast("✦ 고친 곳에서 배우는 중…");
     const a = await askAnything(
-      `AI가 쓴 초안과 사람이 고쳐 보낸 글을 비교해서, 이 사람의 글쓰기 취향 규칙을 25자 이내 한 줄로만 답해줘. 예: 교수님께는 결론부터 짧게. 규칙만 출력.\n\n초안: ${mailDraft}\n\n보낸 글: ${edited}`,
+      `AI가 쓴 초안과 사람이 고쳐 보낸 글을 비교해서, 이 사람의 글쓰기 취향 규칙을 25자 이내 한 줄로만 답해줘. 예: 교수님께는 결론부터 짧게. 규칙만 출력.\n\n초안: ${draftText}\n\n보낸 글: ${edited}`,
       true,
     );
     if (!a.ok) return setToast("✦ 보냈어요 (데모)");
@@ -347,6 +350,8 @@ export default function Demo() {
     setNoteUndo(() => () => setFacts(prev));
     setToast(`✦ 배웠어요: ${rule}`);
   };
+
+  const sendMail = () => learnFrom(mailDraft, mail.body.trim());
 
   const undoMail = () => {
     setMail({ to: "", subject: "", body: "" });
@@ -381,13 +386,15 @@ export default function Demo() {
   const startTour = async () => {
     tourLive.current = true;
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let draftText = "";
     const scenes: [string, () => void | Promise<void>, number][] = [
       ["① 글을 읽고 있으면 Alter가 먼저 말을 걸어요", () => { openApp("browser"); setTab("article"); void g.load(false); }, 5500],
       ["② 단어를 고르면 한국어로 바로 설명해요", () => explain({ x: 260, y: 330, text: "pairformer", context: ARTICLE_TEXT }), 5000],
       ["③ 양식은 알아서 채워요. 되돌리기는 한 번이에요", () => { openApp("browser"); setTab("signup"); }, 5000],
       ["④ 카드·비밀번호는 Alter가 읽지 않고, 보관함에서 채워요", () => { openApp("browser"); setTab("bank"); }, 5000],
-      ["⑤ 메일을 열면 읽은 글로 답장 초안을 써요", async () => { openApp("mail"); await wait(1200); await draftMail(); }, 5000],
-      ["⑥ 대시보드에서 오늘 뭘 해야 하는지 물어보세요", () => openApp("alter"), 4000],
+      ["⑤ 대시보드는 오늘 뭘 해야 하는지 알고 있어요", () => openApp("alter"), 4000],
+      ["⑥ 메일을 열면 읽은 논문으로 답장 초안을 써요", async () => { openApp("mail"); await wait(1200); draftText = await draftMail(); }, 4500],
+      ["⑦ 고쳐서 보내면 Alter가 내 취향을 배워요", async () => { const edited = "교수님, 결론부터 말씀드리면 diffusion 모듈 중심으로 20분 발표하겠습니다. 감사합니다."; setMail((m) => ({ ...m, body: edited })); await wait(1500); await learnFrom(draftText, edited); }, 6000],
     ];
     for (const [text, act, ms] of scenes) {
       if (!tourLive.current) return;
