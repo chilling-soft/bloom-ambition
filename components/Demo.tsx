@@ -19,7 +19,7 @@ type Tab = "article" | "signup" | "bank";
 type AppId = "browser" | "mail" | "alter";
 
 const TABS: { id: Tab; title: string; host: string }[] = [
-  { id: "article", title: "Protein Notes", host: "protein-notes.example/alphafold3-diffusion" },
+  { id: "article", title: "Nature", host: "nature.com/articles/s41586-024-07487-w" },
   { id: "signup", title: "세미나 신청", host: "seminar.example" },
   { id: "bank", title: "카드사", host: "mybank.example" },
 ];
@@ -56,7 +56,7 @@ function Chips<T extends string>({ label, value, options, onChange }: { label: s
 }
 
 // words worth selecting get a dotted underline, so a first-time visitor knows what to try
-const HINT_WORDS = /(diffusion 모듈|Pairformer)/g;
+const HINT_WORDS = /(diffusion module|pairformer|evoformer|diffusion-based)/gi;
 function withHints(text: string) {
   return text.split(HINT_WORDS).map((part, i) =>
     i % 2 ? (
@@ -97,6 +97,8 @@ export default function Demo() {
   const [joined, setJoined] = useState(false);
   const [showPhone, setShowPhone] = useState(false);
   const [vault, setVault] = useState(false);
+  const [vaultAuto, setVaultAuto] = useState(false); // opened from the suggestion: fill as soon as it unlocks
+  const [vaultDone, setVaultDone] = useState(false);
   const [guide, setGuide] = useState(false);
   const [popover, setPopover] = useState(false); // menu-bar window: rings, what Alter knows, settings
   const [palette, setPalette] = useState(false); // Raycast-style command palette (⌘E with no selection)
@@ -559,6 +561,11 @@ export default function Demo() {
         <button onClick={nextTask} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">다음 태스크</button>
         <button aria-label="넘기기" onClick={g.dismiss} className="text-white/50 hover:text-white">✕</button>
       </>
+    ) : app === "browser" && tab === "bank" && !vaultDone ? (
+      <>
+        <span>✦ 이 양식은 보관함의 아이디·카드번호·비밀번호로 채울 수 있어요</span>
+        <button onClick={() => { setVaultAuto(true); setVault(true); }} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">보관함으로 채우기</button>
+      </>
     ) : app === "browser" && tab === "signup" && !joined && filled ? (
       <>
         <span>✦ 알아서 채웠어요</span>
@@ -770,7 +777,7 @@ export default function Demo() {
                   {TABS.map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); g.reset(); }}
+                      onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); setVaultDone(false); g.reset(); }}
                       className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
                     >
                       {t.title}
@@ -829,7 +836,8 @@ export default function Demo() {
                       {ARTICLE.paras.map((p, i) => (
                         <p key={i} className={`${i === 0 ? "mt-4" : "mt-3"} leading-relaxed text-black/80`}>{withHints(p)}</p>
                       ))}
-                      <p className="mt-6 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-black/50">그냥 읽어 보세요. 잠시 뒤 Alter가 먼저 말을 걸어요. 점선 단어를 선택하고 ⌘E를 눌러도 돼요.</p>
+                      <p className="mt-4 text-xs text-black/40">{ARTICLE.source}</p>
+                      <p className="mt-4 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-black/50">영어 원문 그대로예요. 설명은 한국어로 나와요. 잠시 읽으면 Alter가 먼저 말을 걸고, 점선 단어를 선택하고 ⌘E를 눌러도 돼요.</p>
                     </article>
                   )}
 
@@ -1039,7 +1047,8 @@ export default function Demo() {
 
       {vault && (
         <Vault
-          onClose={() => setVault(false)}
+          autoFill={vaultAuto}
+          onClose={() => { setVault(false); setVaultAuto(false); }}
           canFill={app === "browser" && (tab === "bank" || tab === "signup")}
           onFill={(values) => {
             // only the item the person tapped arrives here; the bank page itself is never read
@@ -1049,7 +1058,9 @@ export default function Demo() {
               if (el && v) setValue(el, v);
             }
             setVault(false);
-            setToast("✦ 보관함에서 직접 채웠어요. 기록에 남아요");
+            setVaultAuto(false);
+            setVaultDone(true);
+            setToast("✦ 보관함에서 채웠어요. 기록에 남아요");
           }}
         />
       )}

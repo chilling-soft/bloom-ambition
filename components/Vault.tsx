@@ -50,7 +50,7 @@ const mask = (v: string) => {
 
 // Demo-safe vault: fake values only, encrypted in this browser, filled only when you tap.
 // onFill gets { [item.field]: item.value } for the one item you tapped.
-export function Vault({ onClose, onFill, canFill }: { onClose: () => void; onFill: (values: Record<string, string>) => void; canFill: boolean }) {
+export function Vault({ onClose, onFill, canFill, autoFill = false }: { onClose: () => void; onFill: (values: Record<string, string>) => void; canFill: boolean; autoFill?: boolean }) {
   const [stored, setStored] = useState<Stored | null>(() => (typeof window === "undefined" ? null : readStored()));
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
@@ -75,6 +75,8 @@ export function Vault({ onClose, onFill, canFill }: { onClose: () => void; onFil
         if (next !== opened) await seal(next, key, salt);
         setItems(next);
         setSession({ key, salt });
+        // opened from the suggestion: the person already said yes, so fill right after the passphrase
+        if (autoFill && canFill) onFill(Object.fromEntries(next.map((i) => [i.field, i.value])));
       } else {
         // first open: the passphrase you type now creates the vault, seeded with fake values
         const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -82,6 +84,7 @@ export function Vault({ onClose, onFill, canFill }: { onClose: () => void; onFil
         await seal(SEED, key, salt);
         setItems(SEED);
         setSession({ key, salt });
+        if (autoFill && canFill) onFill(Object.fromEntries(SEED.map((i) => [i.field, i.value])));
       }
       setPass("");
     } catch {
