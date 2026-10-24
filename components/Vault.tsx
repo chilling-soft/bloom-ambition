@@ -114,6 +114,12 @@ export function Vault({ onClose, onFill, canFill }: { onClose: () => void; onFil
     onFill({ [i.field]: i.value });
   };
 
+  // one tap for the whole form: the page keeps only the fields it has, the rest is ignored
+  const fillAll = () => {
+    for (const i of items) note(i.id, "채우기");
+    onFill(Object.fromEntries(items.map((i) => [i.field, i.value])));
+  };
+
   const add = (e: React.FormEvent) => {
     e.preventDefault();
     const label = draft.label.trim();
@@ -146,7 +152,11 @@ export function Vault({ onClose, onFill, canFill }: { onClose: () => void; onFil
           </form>
         ) : (
           <>
-            {!canFill && <p className="mt-3 text-xs text-black/40">채우려면 입력 칸이 있는 양식을 먼저 열어 주세요.</p>}
+            {canFill ? (
+              <button onClick={fillAll} className="mt-3 w-full rounded-full bg-black py-2 text-xs text-white">이 양식에 맞는 것 모두 채우기</button>
+            ) : (
+              <p className="mt-3 text-xs text-black/40">채우려면 입력 칸이 있는 양식(「세미나 신청」, 「카드사」 탭)을 먼저 열어 주세요.</p>
+            )}
             <ul className="mt-3 space-y-2">
               {items.map((i) => (
                 <li key={i.id} className="rounded-xl bg-black/[0.03] px-3 py-2">

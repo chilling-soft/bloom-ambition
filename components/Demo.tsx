@@ -862,7 +862,8 @@ export default function Demo() {
                       <h3 className="text-xl font-semibold">카드사 로그인</h3>
                       <label className="block text-sm">아이디<input name="userid" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <label className="block text-sm">카드번호<input name="cardno" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
-                      <p className="text-xs text-black/50">Alter는 이 페이지를 읽지 않아요. 보관함에서 직접 눌러야 채워져요.</p>
+                      <p className="text-xs text-black/50">Alter는 이 페이지를 읽지 않아요. 아이디·카드번호·비밀번호는 보관함에서 직접 눌러야 채워져요.</p>
+                      <button type="button" onClick={() => setVault(true)} className="w-full rounded-lg border border-black/20 py-2 text-sm">보관함 열기</button>
                       <label className="block text-sm">비밀번호<input name="password" type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <button className="w-full rounded-lg bg-black py-2.5 text-white">로그인</button>
                     </form>
