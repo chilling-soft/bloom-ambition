@@ -1042,7 +1042,7 @@ export default function Demo() {
           canFill={app === "browser" && tab === "bank"}
           onFill={(values) => {
             // only the item the person tapped arrives here; the bank page itself is never read
-            const byName: Record<string, string | undefined> = { userid: values.account, cardno: values.card };
+            const byName: Record<string, string | undefined> = { userid: values.account, cardno: values.card?.split(" · ")[0] };
             for (const [n, v] of Object.entries(byName)) {
               const el = v ? contentRef.current?.querySelector<HTMLInputElement>(`input[name=${n}]`) : null;
               if (el && v) setValue(el, v);
