@@ -68,9 +68,11 @@ export function GuideSetup({ onClose, onSave, ask }: Props) {
     next();
   };
 
-  const canned = (s: string) => {
-    onSave(cur.id, s);
-    setPhase("done");
+  // the presets go through the same confirm step as the voice path; nothing is saved until 맞아요
+  const canned = (label: string, s: string) => {
+    setText(label);
+    setSummary(s);
+    setPhase("summary");
   };
 
   return (
@@ -93,8 +95,8 @@ export function GuideSetup({ onClose, onSave, ask }: Props) {
           <div className="mt-4">
             <p className="text-base font-semibold">{cur.prompt}</p>
             <div className="mt-3 flex flex-col gap-2">
-              <button onClick={() => canned(CANNED.similar)} className="rounded-full border border-black/15 px-4 py-2 text-left hover:bg-black/[0.03]">바이오랑 비슷하게</button>
-              <button onClick={() => canned(CANNED.fewer)} className="rounded-full border border-black/15 px-4 py-2 text-left hover:bg-black/[0.03]">더 적게</button>
+              <button onClick={() => canned("바이오랑 비슷하게", CANNED.similar)} className="rounded-full border border-black/15 px-4 py-2 text-left hover:bg-black/[0.03]">바이오랑 비슷하게</button>
+              <button onClick={() => canned("더 적게", CANNED.fewer)} className="rounded-full border border-black/15 px-4 py-2 text-left hover:bg-black/[0.03]">더 적게</button>
               <button onClick={() => setPhase("input")} className="rounded-full bg-black px-4 py-2 text-left text-white">말로 할게요</button>
             </div>
           </div>
