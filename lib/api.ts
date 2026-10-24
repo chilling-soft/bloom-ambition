@@ -23,6 +23,9 @@ export async function postJson<T>(url: string, body: unknown): Promise<Result<T>
   }
 }
 
+// the model sometimes emits markdown; the UI shows plain text
+const plain = (s: string) => s.replace(/\*\*|__|`/g, "");
+
 // a reply that stopped mid-sentence is cut back to its last full sentence
 function tidy(text: string): string {
   const t = text.trim();
@@ -46,9 +49,9 @@ export async function askStream(body: unknown, onText: (soFar: string) => void, 
       const { done, value } = await reader.read();
       if (done) break;
       acc += dec.decode(value, { stream: true });
-      onText(acc);
+      onText(plain(acc));
     }
-    const text = loose ? acc.trim() : tidy(acc);
+    const text = loose ? plain(acc).trim() : tidy(plain(acc));
     return text ? { ok: true, data: { text } } : { ok: false, reason: "error" };
   } catch {
     return { ok: false, reason: "network" };

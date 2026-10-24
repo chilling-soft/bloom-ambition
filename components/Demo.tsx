@@ -33,7 +33,7 @@ const SEED: Fact[] = [
 ];
 
 const KEY_LABEL: Record<string, string> = { name: "이름", email: "이메일", affiliation: "소속" };
-const EASY_Q = "이 문단을 이미지 생성 예로 쉽게 다시 설명해줘";
+const EASY_Q = "이 글의 핵심을 비유를 들어 중학생도 알 수 있게 쉽게 다시 설명해줘";
 
 // still explained, but not worth remembering as something the user "looked up"
 const STOPWORDS = new Set(["그리고", "하지만", "이", "그", "은", "는", "을", "를"]);
@@ -431,7 +431,7 @@ export default function Demo() {
     setHandoff({ title: ARTICLE.title, term: "쉽게 다시", explanation: a.text, ts: Date.now() });
     addDone("ai");
     setNoteUndo(() => () => setHandoff(prev));
-    setToast("✦ 이미지 생성 예로 풀어서 폰으로 보냈어요 · AI·개발 링에도 들어가요");
+    setToast("✦ 쉬운 설명을 만들어 폰으로 보냈어요 · AI·개발 링에도 들어가요");
   };
 
   const nextTask = () => {
@@ -755,7 +755,7 @@ export default function Demo() {
           <div data-popover className="absolute right-3 top-10 z-30 max-h-[80%] w-[22rem] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 p-4 text-sm shadow-2xl backdrop-blur">
             <div className="flex items-center justify-between">
               <b className="text-base">Alter</b>
-              <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-black/50">{denied ? "여기서는 멈춤" : learning === "on" ? "learning" : "학습 꺼짐"}</span>
+              <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-black/50">{denied ? "여기서는 멈춤" : learning === "on" ? "학습 중" : "학습 꺼짐"}</span>
             </div>
 
             {rings === "on" && (
