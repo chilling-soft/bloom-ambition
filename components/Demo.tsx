@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ARTICLE } from "@/lib/article";
+import { FAIL_TEXT, postJson } from "@/lib/api";
+import { ARTICLE, ARTICLE_TEXT } from "@/lib/article";
 import { collectFields, isDeniedHost, setValue } from "@/lib/core";
 import { upsert } from "@/lib/facts";
-import { INTERESTS, isClosed, PICKS, START_MINUTES, type Minutes, type RingId } from "@/lib/rings";
+import { INTERESTS, isClosed, PICKS, remaining, START_DONE, type Done, type RingId } from "@/lib/rings";
 import type { Fact, Handoff } from "@/lib/types";
-import { Dashboard, type ResumeAction } from "./Dashboard";
+import { dayContext, type ResumeAction } from "@/lib/work";
+import { Dashboard, type AskResult } from "./Dashboard";
 import { Rings } from "./Rings";
 import { useGlance, type Proactivity } from "./useGlance";
 
@@ -35,7 +37,7 @@ const EASY_Q = "이 문단을 이미지 생성 예로 쉽게 다시 설명해줘
 const STOPWORDS = new Set(["그리고", "하지만", "이", "그", "은", "는", "을", "를"]);
 
 type Sel = { x: number; y: number; text: string; context: string };
-type Card = { term: string; text: string; live: boolean };
+type Card = { term: string; text: string; live: boolean; retry?: Sel };
 type Draft = { used: string[]; live: boolean };
 
 function Chips<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
@@ -65,11 +67,6 @@ function withHints(text: string) {
   );
 }
 
-const post = (url: string, body: unknown) =>
-  fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
-    .then((x) => x.json())
-    .catch(() => null);
-
 export default function Demo() {
   const [tab, setTab] = useState<Tab>("article");
   const [facts, setFacts] = useState<Fact[]>(SEED);
@@ -88,6 +85,7 @@ export default function Demo() {
   const [loading, setLoading] = useState(false);
   const [sel, setSel] = useState<Sel | null>(null);
   const [toast, setToast] = useState("");
+  const [noteUndo, setNoteUndo] = useState<(() => void) | null>(null);
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
   const [detected, setDetected] = useState(0);
   const [filled, setFilled] = useState(false);
@@ -100,15 +98,16 @@ export default function Demo() {
   const [palette, setPalette] = useState(false); // Raycast-style command palette (⌘E with no selection)
   const [paletteIdx, setPaletteIdx] = useState(0);
   const [paletteQ, setPaletteQ] = useState("");
-  const [paletteA, setPaletteA] = useState<string | null>(null);
+  const [paletteA, setPaletteA] = useState<AskResult | null>(null);
   const [cardPos, setCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [app, setApp] = useState<AppId>("browser"); // the "OS": three apps, Alter sits above all of them
   const [mail, setMail] = useState({ to: "", subject: "", body: "" });
   const [mailUsed, setMailUsed] = useState<string[]>([]);
   const [mailDrafting, setMailDrafting] = useState(false);
   const [proactivity, setProactivity] = useState<Proactivity>("balanced");
-  const [minutes, setMinutes] = useState<Minutes>(START_MINUTES);
+  const [done, setDone] = useState<Done>(START_DONE);
   const [rings, setRings] = useState<"on" | "off">("on");
+  const [focusQ, setFocusQ] = useState<string | null>(null); // the question open in the Alter panel
   // first-run guide: each step ticks itself when the visitor really does it
   const [tour, setTour] = useState({ explained: false, filled: false, mailed: false, menu: false, phone: false });
   const [coach, setCoach] = useState<"open" | "folded">(() =>
@@ -136,16 +135,16 @@ export default function Demo() {
   const canLearn = learning === "on" && !denied;
   const optedOut = optOut.includes(host.split("/")[0]);
 
-  // reading, asking and watching all count as minutes toward the day's rings; no penalties, just empty
-  const addMinutes = useCallback(
-    (id: RingId, n: number) => {
+  // finishing a task fills its ring; a closed ring says so. Nothing is ever taken away
+  const addDone = useCallback(
+    (id: RingId) => {
       if (rings === "off") return;
       const i = INTERESTS.find((x) => x.id === id)!;
-      const before = minutes[id];
-      setMinutes((m) => ({ ...m, [id]: m[id] + n }));
-      if (before < i.goal && before + n >= i.goal) setToast(`✦ ${i.name.split(" ")[0]} 링을 완료했어요`);
+      if (done[id] >= i.goal) return;
+      setDone((d) => ({ ...d, [id]: d[id] + 1 }));
+      if (done[id] + 1 >= i.goal) setToast(`✦ ${i.short} ${i.goal}/${i.goal} 완료`);
     },
-    [rings, minutes],
+    [rings, done],
   );
 
   const g = useGlance({
@@ -155,7 +154,7 @@ export default function Demo() {
     learning: canLearn,
     watching: app === "browser" && tab === "article",
     proactivity,
-    onEngage: (kind) => addMinutes(kind === "gist" ? "bio" : "ai", kind === "gist" ? 3 : 2),
+    onEngage: () => addDone("bio"),
   });
 
   const markDone = (step: keyof typeof tour) => setTour((t) => (t[step] ? t : { ...t, [step]: true }));
@@ -193,17 +192,20 @@ export default function Demo() {
       fetch(`/api/store/${code}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ facts, handoff, minutes, updatedAt: Date.now() }),
+        body: JSON.stringify({ facts, handoff, done, updatedAt: Date.now() }),
       }).catch(() => {});
     }, 300);
     return () => clearTimeout(t);
-  }, [code, facts, handoff, minutes]);
+  }, [code, facts, handoff, done]);
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(""), 3500);
+    const t = setTimeout(() => {
+      setToast("");
+      setNoteUndo(null);
+    }, noteUndo ? 8000 : 3500);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast, noteUndo]);
 
   const explain = useCallback(
     async (s: Sel) => {
@@ -212,22 +214,25 @@ export default function Demo() {
       setCard(null);
       setCardPos({ x: s.x, y: s.y + 46 });
       setLoading(true);
-      const r = await post("/api/explain", { code, term: s.text, context: s.context });
-      const text: string = r?.text ?? "지금은 Alter에 닿지 않아요. 잠시 뒤에 다시 해 주세요.";
+      const r = await postJson<{ text: string; live?: boolean }>("/api/explain", { code, term: s.text, context: s.context });
       setLoading(false);
-      setCard({ term: s.text, text, live: !!r?.live });
+      if (!r.ok) {
+        setCard({ term: s.text, text: FAIL_TEXT[r.reason], live: true, retry: s });
+        return;
+      }
+      const text = r.data.text;
+      setCard({ term: s.text, text, live: !!r.data.live });
       setTour((t) => (t.explained ? t : { ...t, explained: true }));
       setHandoff({ title: ARTICLE.title, term: s.text, explanation: text, ts: Date.now() });
-      addMinutes("bio", 2);
       if (learning === "on" && s.text.length >= 2 && !STOPWORDS.has(s.text)) {
         setFacts((f) => {
           let n = upsert(f, { kind: "interest", key: "interest:bio", label: "관심사", value: "바이오 (단백질 구조)", source: "읽기 기록", confidence: 0.8 });
-          n = upsert(n, { kind: "activity", key: `activity:${s.text.toLowerCase()}`, label: "찾아본 말", value: s.text, source: "Protein Notes", confidence: 0.5 });
+          n = upsert(n, { kind: "activity", key: `activity:${s.text.toLowerCase().slice(0, 40)}`, label: "찾아본 말", value: s.text.slice(0, 120), source: "Protein Notes", confidence: 0.5 });
           return n;
         });
       }
     },
-    [code, learning, addMinutes],
+    [code, learning],
   );
 
   const onArticleMouseUp = () => {
@@ -237,7 +242,7 @@ export default function Demo() {
     const r = s.getRangeAt(0).getBoundingClientRect();
     const c = contentRef.current!.getBoundingClientRect();
     // a word outside any paragraph (the title) still gets the whole article as context
-    const para = s.anchorNode?.parentElement?.closest("p")?.textContent ?? ARTICLE.paras.join("\n\n");
+    const para = s.anchorNode?.parentElement?.closest("p")?.textContent ?? ARTICLE_TEXT;
     const next = { x: r.left - c.left + r.width / 2, y: r.top - c.top + contentRef.current!.scrollTop - 40, text, context: para };
     setSel(next);
     if (trigger === "auto") setTimeout(() => explain(next), 600);
@@ -266,12 +271,12 @@ export default function Demo() {
     const ft = fields.find((f) => f.freeText);
     if (ft) {
       const share = facts.filter((f) => f.kind !== "identity").map(({ id, label, value }) => ({ id, label, value }));
-      const r = await post("/api/fill", { code, label: ft.label, facts: share });
-      if (r?.text) {
+      const r = await postJson<{ text: string; usedFactIds?: string[]; live?: boolean }>("/api/fill", { code, label: ft.label, facts: share });
+      if (r.ok && r.data.text) {
         undoRef.current.set(ft.el, "");
-        setValue(ft.el, r.text);
+        setValue(ft.el, r.data.text);
         setMarks((x) => ({ ...x, [ft.el.name]: "Alter가 아는 것으로 초안" }));
-        setDraft({ used: r.usedFactIds ?? [], live: !!r.live });
+        setDraft({ used: r.data.usedFactIds ?? [], live: !!r.data.live });
       }
     }
   }, [code, facts]);
@@ -303,11 +308,11 @@ export default function Demo() {
     setMailDrafting(true);
     const share = shareFacts();
     if (handoff) share.push({ id: "just-read", label: "방금 읽은 글", value: handoff.title });
-    const r = await post("/api/fill", { code, label: "교수님께 보내는 짧은 답장: 방금 읽은 글을 바탕으로 발표에서 다룰 방향 한 줄", facts: share });
+    const r = await postJson<{ text: string; usedFactIds?: string[] }>("/api/fill", { code, label: "교수님께 보내는 짧은 답장: 방금 읽은 글을 바탕으로 발표에서 다룰 방향 한 줄", facts: share });
     setMailDrafting(false);
-    if (!r?.text) return;
-    setMail((m) => ({ ...m, to: m.to || "kim.prof@lab.example", subject: m.subject || "Re: 다음 주 저널클럽 발표 순서", body: r.text }));
-    setMailUsed(r.usedFactIds ?? []);
+    if (!r.ok || !r.data.text) return setToast(`✦ ${r.ok ? FAIL_TEXT.error : FAIL_TEXT[r.reason]}`);
+    setMail((m) => ({ ...m, to: m.to || "kim.prof@lab.example", subject: m.subject || "Re: 다음 주 저널클럽 발표 순서", body: r.data.text }));
+    setMailUsed(r.data.usedFactIds ?? []);
     setMarks({ body: "방금 읽은 글로 초안", subject: "방금 읽은 글로 초안", to: "받은 편지에서" });
     setFilled(true);
     setTour((t) => (t.mailed ? t : { ...t, mailed: true }));
@@ -332,6 +337,7 @@ export default function Demo() {
     setJoined(false);
     setDeclined(false);
     setFocusAsk(null);
+    setFocusQ(null);
     g.reset();
     if (a === "alter") markDone("menu");
   };
@@ -344,12 +350,35 @@ export default function Demo() {
     setTab(a.tab);
   };
 
-  const askAnything = async (q: string) => {
-    if (!code) return "지금은 Alter에 닿지 않아요. 잠시 뒤에 다시 해 주세요.";
-    const r = await post("/api/ask", { code, q, context: app === "browser" && tab === "article" ? ARTICLE.paras.join("\n\n") : "", facts: shareFacts().map(({ label, value }) => ({ label, value })) });
-    addMinutes("ai", 1);
-    if (learning === "on") setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q, source: "Alter", confidence: 0.5 }));
-    return (r?.text as string | undefined) ?? "지금은 Alter에 닿지 않아요. 잠시 뒤에 다시 해 주세요.";
+  // Alter answers from the person's whole day, not just the question: that is what makes "what should I do now?" answerable
+  const askAnything = async (q: string, extra = ""): Promise<AskResult> => {
+    if (!code) return { ok: false, text: FAIL_TEXT.network };
+    const reading = app === "browser" && tab === "article";
+    const place = reading ? `브라우저에서 「${ARTICLE.title}」을 읽는 중` : app === "mail" ? "메일 앱" : app === "alter" ? "Alter 대시보드" : "브라우저";
+    const context = dayContext({ done, place, read: handoff ? { title: handoff.title, term: handoff.term } : reading ? { title: ARTICLE.title } : null }) + (reading ? `\n\n지금 읽고 있는 글:\n${ARTICLE_TEXT}` : "") + extra;
+    const r = await postJson<{ text: string }>("/api/ask", { code, q, context, facts: shareFacts().slice(0, 15).map(({ label, value }) => ({ label, value })) });
+    if (!r.ok) return { ok: false, text: FAIL_TEXT[r.reason] };
+    if (learning === "on") setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q.slice(0, 120), source: "Alter", confidence: 0.5 }));
+    return { ok: true, text: r.data.text };
+  };
+
+  // HUD choices on the stuck-reading offer: each ends as one short line you can undo, never a growing card
+  const easier = async () => {
+    g.accept();
+    setToast("✦ 쉽게 풀어 쓰는 중…");
+    const a = await askAnything(EASY_Q);
+    if (!a.ok) return setToast(`✦ ${a.text}`);
+    const prev = handoff;
+    setHandoff({ title: ARTICLE.title, term: "쉽게 다시", explanation: a.text, ts: Date.now() });
+    addDone("ai");
+    setNoteUndo(() => () => setHandoff(prev));
+    setToast("✦ 이미지 생성 예로 풀어서 폰으로 보냈어요 · AI·개발 링에도 들어가요");
+  };
+
+  const nextTask = () => {
+    g.accept();
+    const next = PICKS.find((p) => p.ring === "bio") ?? PICKS[0];
+    setToast(`✦ 다음 · ${next.title} (${next.meta.split(" · ").pop()})`);
   };
 
   // a value the user types over stops being "filled by Alter" (synthetic events from fill() are not trusted)
@@ -406,7 +435,7 @@ export default function Demo() {
   if (app === "browser" && tab === "article") actions.push({ id: "glance", label: "이 글 요약하기" });
   if (app === "browser" && tab === "signup" && !joined && !denied) actions.push(filled ? { id: "undo", label: "자동 입력 되돌리기" } : { id: "fill", label: "이 양식 채우기" });
   if (app === "mail") actions.push(filled ? { id: "undoDraft", label: "초안 되돌리기" } : { id: "draft", label: "방금 읽은 내용으로 답장 초안 쓰기" });
-  actions.push({ id: "dashboard", label: "진행중인 일 보기" }, { id: "settings", label: "링, Alter가 아는 것, 설정 열기" }, { id: "phone", label: "폰 연결하기" });
+  actions.push({ id: "dashboard", label: "진행중인 일 보기" }, { id: "settings", label: "Alter 메뉴 열기" }, { id: "phone", label: "폰 연결하기" });
 
   const runAction = (id: ActionId) => {
     setPalette(false);
@@ -425,7 +454,7 @@ export default function Demo() {
   const submitPalette = async () => {
     const q = paletteQ.trim();
     if (!q) return;
-    setPaletteA("…");
+    setPaletteA({ ok: true, text: "…" });
     setPaletteA(await askAnything(q));
   };
 
@@ -468,14 +497,13 @@ export default function Demo() {
     return () => window.removeEventListener("keydown", h);
   }, []);
 
-  // anything Alter opened closes itself when you click somewhere else
+  // anything Alter opened closes itself when you click somewhere else (the docked panel stays until you close it)
   const outsideRef = useRef<(e: MouseEvent) => void>(() => {});
   useEffect(() => {
     outsideRef.current = (e) => {
       const t = e.target as Element;
       if (popover && !t.closest("[data-popover], [data-toggle]")) setPopover(false);
       if (card && !t.closest("[data-bubble]")) setCard(null);
-      if (g.glance?.status === "open" && !t.closest("[data-glance]")) g.minimize();
       if (sel && !t.closest("[data-chip], article")) setSel(null);
       if (focusAsk && !t.closest("[data-askfill]")) setFocusAsk(null);
     };
@@ -493,20 +521,30 @@ export default function Demo() {
   const phoneUrl = typeof window !== "undefined" && code ? `${window.location.origin}/m?code=${code}` : "";
   const shown = [...facts].sort((a, b) => Number(!!b.isNew) - Number(!!a.isNew));
   const gl = g.glance;
-  const closedNames = INTERESTS.filter((i) => isClosed(minutes, i)).map((i) => i.name.split(" ")[0]);
+  const closedNames = INTERESTS.filter((i) => isClosed(done, i)).map((i) => i.short);
+  const panelOpen = app === "browser" && tab === "article" && (gl?.status === "open" || gl?.status === "loading");
+  const closePanel = () => {
+    g.dismiss();
+    setFocusQ(null);
+  };
 
   // the only thing Alter shows by itself: one short-lived line above the Dock
   const hud: React.ReactNode =
     denied ? (
       <span className="text-white/70">✦ 여기서는 멈춰 있어요. 아무것도 읽거나 배우지 않아요.</span>
     ) : toast ? (
-      <span>{toast.startsWith("✦") ? toast : `✦ ${toast}`}</span>
+      <>
+        <span>{toast.startsWith("✦") ? toast : `✦ ${toast}`}</span>
+        {noteUndo && (
+          <button onClick={() => { noteUndo(); setToast(""); setNoteUndo(null); }} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">되돌리기</button>
+        )}
+      </>
     ) : app === "browser" && tab === "article" && gl?.status === "ready" && !gl.counted ? (
       <>
         <span>✦ 이 문단에서 한참 머물렀어요. 다음은?</span>
-        <button onClick={() => { g.open(); void g.ask(EASY_Q); }} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">쉽게 다시</button>
+        <button onClick={easier} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">쉽게 다시</button>
         <button onClick={g.open} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">3줄 요약</button>
-        <button onClick={() => { g.open(); g.minimize(); setToast("다음 · 단백질 설계 연구 흐름 정리 (10분)"); }} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">다음 글로</button>
+        <button onClick={nextTask} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">다음 태스크</button>
         <button aria-label="넘기기" onClick={g.dismiss} className="text-white/50 hover:text-white">✕</button>
       </>
     ) : app === "browser" && tab === "signup" && !joined && filled ? (
@@ -606,20 +644,23 @@ export default function Demo() {
           <div data-popover className="absolute right-3 top-10 z-30 max-h-[80%] w-[22rem] overflow-y-auto rounded-2xl border border-black/10 bg-white/95 p-4 text-sm shadow-2xl backdrop-blur">
             <div className="flex items-center justify-between">
               <b className="text-base">Alter</b>
-              <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-black/50">{denied ? "여기서는 멈춤" : learning === "on" ? "learning · 12일 연속" : "학습 꺼짐"}</span>
+              <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-black/50">{denied ? "여기서는 멈춤" : learning === "on" ? "learning" : "학습 꺼짐"}</span>
             </div>
 
             {rings === "on" && (
               <section aria-label="오늘의 링" className="mt-3 rounded-xl bg-black/[0.03] p-3">
                 <p className="text-sm font-semibold">{closedNames.length ? `${closedNames.join(", ")} 링을 완료했어요` : "오늘의 링"}</p>
                 <div className="mt-2 flex items-center gap-3">
-                  <Rings minutes={minutes} size={96} stroke={20} />
+                  <Rings done={done} size={96} />
                   <div className="flex flex-1 flex-col gap-1.5">
                     {INTERESTS.map((i) => (
-                      <div key={i.id} className="flex items-center gap-2 text-[13px]">
-                        <span className="h-2 w-2 rounded-full" style={{ background: i.color }} />
-                        <span className="flex-1 font-medium">{i.name}</span>
-                        {isClosed(minutes, i) ? <span className="font-semibold text-rose-700">닫힘</span> : <span><b>{minutes[i.id]}</b><span className="text-black/50">/{i.goal}분</span></span>}
+                      <div key={i.id} className="text-[13px]">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full" style={{ background: i.color }} />
+                          <span className="flex-1 font-medium">{i.name}</span>
+                          {isClosed(done, i) ? <span className="font-semibold text-rose-700">닫힘</span> : <span><b>{done[i.id]}</b><span className="text-black/50"> /{i.goal}</span></span>}
+                        </div>
+                        {!isClosed(done, i) && i.next && <p className="truncate pl-4 text-[11px] text-black/45">다음 · {i.next}</p>}
                       </div>
                     ))}
                   </div>
@@ -627,7 +668,7 @@ export default function Demo() {
               </section>
             )}
 
-            <p className="mb-1.5 mt-4 text-xs font-medium text-black/40">오늘 볼 것 · Alter가 골랐어요</p>
+            <p className="mb-1.5 mt-4 text-xs font-medium text-black/40">오늘 태스크 · {remaining(done)}개 남음</p>
             <ul className="space-y-1.5">
               {PICKS.map((p) => (
                 <li key={p.title} className="flex items-center gap-2 rounded-lg bg-black/[0.03] px-3 py-2">
@@ -691,7 +732,7 @@ export default function Demo() {
             )}
             {g.nudges.opened + g.nudges.dismissed > 0 && (
               <p className="mt-3 text-xs text-black/60">
-                요약 제안: 열어봄 {g.nudges.opened}, 넘김 {g.nudges.dismissed}.{!g.autoOffer && proactivity !== "quiet" && " 이제 ⌘E로 부를 때만 보여줘요."}
+                먼저 건넨 도움: 받음 {g.nudges.opened}, 넘김 {g.nudges.dismissed}.{!g.autoOffer && proactivity !== "quiet" && " 이제 ⌘E로 부를 때만 보여줘요."}
               </p>
             )}
             <p className="mt-3 text-xs text-black/50">읽지도 배우지도 않는 것: 비밀번호, 결제 칸, 은행 사이트.</p>
@@ -700,155 +741,184 @@ export default function Demo() {
           </div>
         )}
 
-        {/* app window */}
-        <div className={`absolute inset-x-0 bottom-36 flex justify-center px-4 ${app === "alter" ? "top-12" : "top-40 [@media(max-height:700px)]:top-12"}`}>
+        {/* app windows: the Alter panel opens as its own window beside the browser, so the article is never covered */}
+        <div className={`absolute inset-x-0 bottom-36 flex justify-center gap-3 px-4 ${app === "alter" ? "top-12" : "top-40 [@media(max-height:700px)]:top-12"}`}>
           {app === "browser" ? (
-            <div className="relative flex h-full w-full max-w-[860px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
-              <div className="flex items-center gap-2 bg-[#ece7e1] px-3 pt-2">
-                <div className="mr-2 flex gap-1.5 pb-2">
-                  <i className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-                  <i className="h-3 w-3 rounded-full bg-[#febc2e]" />
-                  <i className="h-3 w-3 rounded-full bg-[#28c840]" />
-                </div>
-                {TABS.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); g.reset(); }}
-                    className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
-                  >
-                    {t.title}
-                  </button>
-                ))}
-              </div>
-              <div className="border-b border-black/5 bg-black/[0.03] px-4 py-1.5 font-mono text-xs text-black/50">{host}</div>
-
-              <div ref={contentRef} className="relative min-h-0 flex-1 overflow-y-auto p-6">
-                {/* trigger: a small chip next to a selection */}
-                {sel && (
-                  <button data-chip onClick={() => explain(sel)} style={{ left: sel.x, top: sel.y }} className="absolute z-10 -translate-x-1/2 rounded-full bg-black px-3 py-1.5 text-xs text-white shadow-lg">
-                    ✦ 설명 <span className="ml-1 opacity-50">⌘E</span>
-                  </button>
-                )}
-
-                {/* after Undo: a small offer under the field you just focused, like an autofill dropdown */}
-                {focusAsk && tab === "signup" && (
-                  <div data-askfill style={{ left: focusAsk.x, top: focusAsk.y }} className="absolute z-10 flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm shadow-xl">
-                    <span>✦ 아는 걸로 채울까요?</span>
-                    <button onClick={() => fill()} className="rounded-full bg-black px-3 py-1 text-xs text-white">채우기</button>
+            <>
+              <div className="relative flex h-full min-w-0 max-w-[860px] flex-1 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+                <div className="flex items-center gap-2 bg-[#ece7e1] px-3 pt-2">
+                  <div className="mr-2 flex gap-1.5 pb-2">
+                    <i className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+                    <i className="h-3 w-3 rounded-full bg-[#febc2e]" />
+                    <i className="h-3 w-3 rounded-full bg-[#28c840]" />
+                  </div>
+                  {TABS.map((t) => (
                     <button
-                      onClick={() => { saveOptOut([...optOut, host.split("/")[0]]); setFocusAsk(null); setToast("여기서는 다시 묻지 않을게요. ✦ 설정에서 바꿀 수 있어요."); }}
-                      className="rounded-full border border-black/20 px-3 py-1 text-xs"
+                      key={t.id}
+                      onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); g.reset(); }}
+                      className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
                     >
-                      이 사이트에서는 그만
+                      {t.title}
                     </button>
-                  </div>
-                )}
+                  ))}
+                </div>
+                <div className="truncate border-b border-black/5 bg-black/[0.03] px-4 py-1.5 font-mono text-xs text-black/50">{host}</div>
 
-                {/* answer: a small bubble next to the word, gone on Esc */}
-                {(loading || card) && tab === "article" && (
-                  <div data-bubble style={{ left: Math.max(8, Math.min(cardPos.x - 150, 420)), top: cardPos.y }} className="absolute z-10 w-72 rounded-xl border border-black/10 bg-white p-3 text-sm shadow-2xl">
-                    {loading || !card ? (
-                      <p className="text-black/50">✦ 찾는 중…</p>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between">
-                          <p className="font-medium">{card.term}</p>
-                          <button aria-label="닫기" onClick={() => setCard(null)} className="text-black/40 hover:text-black">✕</button>
-                        </div>
-                        <p className="mt-1 text-black/70">{card.text}</p>
-                        {!card.live && <p className="mt-1 text-xs text-black/40">저장된 답변</p>}
-                      </>
-                    )}
-                  </div>
-                )}
+                <div ref={contentRef} className="relative min-h-0 flex-1 overflow-y-auto p-6">
+                  {/* trigger: a small chip next to a selection */}
+                  {sel && (
+                    <button data-chip onClick={() => explain(sel)} style={{ left: sel.x, top: sel.y }} className="absolute z-10 -translate-x-1/2 rounded-full bg-black px-3 py-1.5 text-xs text-white shadow-lg">
+                      ✦ 설명 <span className="ml-1 opacity-50">⌘E</span>
+                    </button>
+                  )}
 
-                {tab === "article" && (
-                  <article ref={articleRef} onMouseUp={onArticleMouseUp} className="mx-auto max-w-prose">
-                    <p className="text-xs tracking-wide text-black/40">{ARTICLE.kicker}</p>
-                    <h3 className="mt-1 text-2xl font-semibold">{ARTICLE.title}</h3>
-                    {ARTICLE.paras.map((p, i) => (
-                      <p key={i} className={`${i === 0 ? "mt-4" : "mt-3"} leading-relaxed text-black/80`}>{withHints(p)}</p>
-                    ))}
-                    <p className="mt-6 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-black/50">그냥 읽어 보세요. 잠시 뒤 Alter가 먼저 말을 걸어요. 점선 단어를 선택하고 ⌘E를 눌러도 돼요.</p>
-                  </article>
-                )}
+                  {/* after Undo: a small offer above the field you just focused, like an autofill dropdown */}
+                  {focusAsk && tab === "signup" && (
+                    <div data-askfill style={{ left: focusAsk.x, top: focusAsk.y }} className="absolute z-10 flex items-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm shadow-xl">
+                      <span>✦ 아는 걸로 채울까요?</span>
+                      <button onClick={() => fill()} className="rounded-full bg-black px-3 py-1 text-xs text-white">채우기</button>
+                      <button
+                        onClick={() => { saveOptOut([...optOut, host.split("/")[0]]); setFocusAsk(null); setToast("여기서는 다시 묻지 않을게요. ✦ 설정에서 바꿀 수 있어요."); }}
+                        className="rounded-full border border-black/20 px-3 py-1 text-xs"
+                      >
+                        이 사이트에서는 그만
+                      </button>
+                    </div>
+                  )}
 
-                {tab === "signup" && (
-                  <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} onFocus={onFormFocus} className="mx-auto max-w-sm space-y-3">
-                    <h3 className="text-xl font-semibold">단백질 설계 세미나 신청</h3>
-                    {joined ? (
-                      <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">신청이 접수됐어요.</p>
-                    ) : (
-                      <>
-                        <label className="block text-sm">이름{tag("name")}<input name="name" autoComplete="name" className={inp("name")} /></label>
-                        <label className="block text-sm">이메일{tag("email")}<input name="email" type="email" autoComplete="email" className={inp("email")} /></label>
-                        <label className="block text-sm">소속{tag("affiliation")}<input name="affiliation" autoComplete="organization" className={inp("affiliation")} /></label>
-                        <label className="block text-sm">비밀번호<span className="ml-2 text-[11px] text-black/40">절대 채우지 않아요</span><input name="password" type="password" autoComplete="new-password" className={inp("password")} /></label>
-                        <label className="block text-sm">신청 이유{tag("motivation")}<textarea name="motivation" rows={3} className={inp("motivation")} /></label>
-                        {draft && (
-                          <p className="text-xs text-black/50">
-                            근거: {draft.used.map((id) => facts.find((f) => f.id === id)?.value).filter(Boolean).join(", ") || "저장된 맥락"}
-                            {!draft.live && " · 저장된 답변"}
-                          </p>
-                        )}
-                        <button className="w-full rounded-lg bg-black py-2.5 text-white">신청하기</button>
-                      </>
-                    )}
-                  </form>
-                )}
+                  {/* answer: a small bubble next to the word, gone on Esc */}
+                  {(loading || card) && tab === "article" && (
+                    <div data-bubble style={{ left: Math.max(8, Math.min(cardPos.x - 150, 420)), top: cardPos.y }} className="absolute z-10 w-72 rounded-xl border border-black/10 bg-white p-3 text-sm shadow-2xl">
+                      {loading || !card ? (
+                        <p className="text-black/50">✦ 찾는 중…</p>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between">
+                            <p className="font-medium">{card.term}</p>
+                            <button aria-label="닫기" onClick={() => setCard(null)} className="text-black/40 hover:text-black">✕</button>
+                          </div>
+                          <p className={`mt-1 ${card.retry ? "text-amber-800" : "text-black/70"}`}>{card.text}</p>
+                          {card.retry && (
+                            <button onClick={() => explain(card.retry!)} className="mt-2 rounded-full bg-black px-3 py-1 text-xs text-white">다시 시도</button>
+                          )}
+                          {!card.live && !card.retry && <p className="mt-1 text-xs text-black/40">저장된 답변</p>}
+                        </>
+                      )}
+                    </div>
+                  )}
 
-                {tab === "bank" && (
-                  <form onSubmit={(e) => e.preventDefault()} className="mx-auto max-w-sm space-y-3">
-                    <h3 className="text-xl font-semibold">카드사 로그인</h3>
-                    <label className="block text-sm">아이디<input className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
-                    <label className="block text-sm">비밀번호<input type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
-                    <button className="w-full rounded-lg bg-black py-2.5 text-white">로그인</button>
-                  </form>
-                )}
+                  {tab === "article" && (
+                    <article ref={articleRef} onMouseUp={onArticleMouseUp} className="mx-auto max-w-prose">
+                      <p className="text-xs tracking-wide text-black/40">{ARTICLE.kicker}</p>
+                      <h3 className="mt-1 text-2xl font-semibold">{ARTICLE.title}</h3>
+                      {ARTICLE.paras.map((p, i) => (
+                        <p key={i} className={`${i === 0 ? "mt-4" : "mt-3"} leading-relaxed text-black/80`}>{withHints(p)}</p>
+                      ))}
+                      <p className="mt-6 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-black/50">그냥 읽어 보세요. 잠시 뒤 Alter가 먼저 말을 걸어요. 점선 단어를 선택하고 ⌘E를 눌러도 돼요.</p>
+                    </article>
+                  )}
+
+                  {tab === "signup" && (
+                    <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} onFocus={onFormFocus} className="mx-auto max-w-sm space-y-3">
+                      <h3 className="text-xl font-semibold">단백질 설계 세미나 신청</h3>
+                      {joined ? (
+                        <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">신청이 접수됐어요.</p>
+                      ) : (
+                        <>
+                          <label className="block text-sm">이름{tag("name")}<input name="name" autoComplete="name" className={inp("name")} /></label>
+                          <label className="block text-sm">이메일{tag("email")}<input name="email" type="email" autoComplete="email" className={inp("email")} /></label>
+                          <label className="block text-sm">소속{tag("affiliation")}<input name="affiliation" autoComplete="organization" className={inp("affiliation")} /></label>
+                          <label className="block text-sm">비밀번호<span className="ml-2 text-[11px] text-black/40">절대 채우지 않아요</span><input name="password" type="password" autoComplete="new-password" className={inp("password")} /></label>
+                          <label className="block text-sm">신청 이유{tag("motivation")}<textarea name="motivation" rows={3} className={inp("motivation")} /></label>
+                          {draft && (
+                            <p className="text-xs text-black/50">
+                              근거: {draft.used.map((id) => facts.find((f) => f.id === id)?.value).filter(Boolean).join(", ") || "저장된 맥락"}
+                              {!draft.live && " · 저장된 답변"}
+                            </p>
+                          )}
+                          <button className="w-full rounded-lg bg-black py-2.5 text-white">신청하기</button>
+                        </>
+                      )}
+                    </form>
+                  )}
+
+                  {tab === "bank" && (
+                    <form onSubmit={(e) => e.preventDefault()} className="mx-auto max-w-sm space-y-3">
+                      <h3 className="text-xl font-semibold">카드사 로그인</h3>
+                      <label className="block text-sm">아이디<input className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
+                      <label className="block text-sm">비밀번호<input type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
+                      <button className="w-full rounded-lg bg-black py-2.5 text-white">로그인</button>
+                    </form>
+                  )}
+                </div>
               </div>
 
-              {/* the gist: opens from the HUD, the palette, or when you ask for it */}
-              {tab === "article" && gl && (gl.status === "loading" || gl.status === "open") &&
-                (gl.status === "loading" ? (
-                  <div data-glance className="absolute bottom-4 right-4 z-10 rounded-full bg-black px-4 py-2 text-sm text-white shadow-xl">✦ 같이 읽는 중…</div>
-                ) : (
-                  <div data-glance className="absolute bottom-4 right-4 z-10 max-h-[85%] w-80 overflow-y-auto rounded-2xl border border-black/10 bg-white p-4 text-sm shadow-2xl">
-                    <div className="flex items-start justify-between">
-                      <p className="font-medium">✦ 3줄 요약</p>
-                      <button aria-label="넘기기" onClick={g.dismiss} className="text-black/40 hover:text-black">✕</button>
-                    </div>
-                    <ul className="mt-2 list-disc space-y-1 pl-4 text-black/80">
-                      {gl.gist.map((b) => (
-                        <li key={b}>{b}</li>
-                      ))}
-                    </ul>
-                    {Object.entries(gl.answers)
-                      .filter(([q]) => !gl.questions.includes(q))
-                      .map(([q, a]) => (
-                        <div key={q} className="mt-3 rounded-lg bg-indigo-50 p-2.5 text-black/80">
-                          <p className="text-xs text-indigo-700">✦ 쉽게 다시 · AI·개발 링에도 들어가요</p>
-                          <p className="mt-1">{a}</p>
-                        </div>
-                      ))}
-                    {gl.questions.length > 0 && (
-                      <>
-                        <p className="mt-3 text-xs font-medium text-black/40">이런 게 궁금할 수 있어요</p>
-                        <div className="mt-1 flex flex-col gap-1.5">
-                          {gl.questions.map((q) => (
-                            <div key={q}>
-                              <button onClick={() => g.ask(q)} className="w-full rounded-lg border border-black/10 px-3 py-1.5 text-left hover:bg-black/[0.03]">{q}</button>
-                              {gl.answers[q] && <p className="mt-1 px-1 text-black/70">{gl.answers[q]}</p>}
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                    <p className="mt-3 text-xs text-black/40">
-                      왜 보이나요: {gl.why || "이 페이지에 머물렀어요."} ✦ 설정에서 더 조용하게 바꿀 수 있어요.{!gl.live && " · 저장된 답변"}
-                    </p>
+              {/* the Alter panel: its own window to the side. Summary first; a question navigates to its answer and back */}
+              {panelOpen && (
+                <aside data-glance className="flex h-full w-[340px] flex-none flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+                  <div className="flex h-10 flex-none items-center gap-2 bg-[#ece7e1] px-3">
+                    <span className="text-sm font-medium">✦ Alter</span>
+                    <span className="text-xs text-black/40">· 이 글</span>
+                    <button aria-label="닫기" onClick={closePanel} className="ml-auto text-black/40 hover:text-black">✕</button>
                   </div>
-                ))}
-            </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto p-4 text-sm">
+                    {!gl || gl.status === "loading" ? (
+                      <div className="space-y-2" aria-label="불러오는 중">
+                        <p className="text-black/50">✦ 같이 읽는 중…</p>
+                        <div className="h-3 w-4/5 rounded bg-black/5" />
+                        <div className="h-3 w-full rounded bg-black/5" />
+                        <div className="h-3 w-3/5 rounded bg-black/5" />
+                      </div>
+                    ) : focusQ ? (
+                      <div>
+                        <button onClick={() => setFocusQ(null)} className="text-xs text-black/50 hover:text-black">← 요약</button>
+                        <p className="mt-2 font-medium">{focusQ}</p>
+                        {gl.answers[focusQ] ? (
+                          <p className="mt-2 leading-relaxed text-black/80">{gl.answers[focusQ] === "…" ? "✦ 생각하는 중…" : gl.answers[focusQ]}</p>
+                        ) : gl.errors[focusQ] ? (
+                          <div className="mt-2 rounded-lg bg-amber-50 p-3 text-amber-900">
+                            <p>{gl.errors[focusQ]}</p>
+                            <button onClick={() => g.ask(focusQ)} className="mt-2 rounded-full bg-black px-3 py-1 text-xs text-white">다시 시도</button>
+                          </div>
+                        ) : null}
+                        {gl.questions.filter((q) => q !== focusQ).length > 0 && (
+                          <>
+                            <p className="mb-1.5 mt-5 text-xs text-black/40">다른 질문</p>
+                            <div className="flex flex-col gap-1.5">
+                              {gl.questions.filter((q) => q !== focusQ).map((q) => (
+                                <button key={q} onClick={() => { setFocusQ(q); if (!gl.answers[q]) void g.ask(q); }} className="rounded-lg border border-black/10 px-3 py-1.5 text-left hover:bg-black/[0.03]">{q}</button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs font-medium text-black/40">3줄 요약</p>
+                        <ul className="mt-2 list-disc space-y-1.5 pl-4 text-black/80">
+                          {gl.gist.map((b) => (
+                            <li key={b}>{b}</li>
+                          ))}
+                        </ul>
+                        {gl.questions.length > 0 && (
+                          <>
+                            <p className="mb-1.5 mt-5 text-xs font-medium text-black/40">이런 게 궁금할 수 있어요</p>
+                            <div className="flex flex-col gap-1.5">
+                              {gl.questions.map((q) => (
+                                <button key={q} onClick={() => { setFocusQ(q); if (!gl.answers[q]) void g.ask(q); }} className="rounded-lg border border-black/10 px-3 py-2 text-left hover:bg-black/[0.03]">{q}</button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                        <p className="mt-5 text-xs text-black/40" title={gl.why}>
+                          이 문단에 머물러서 제안했어요 · ✦ 설정에서 더 조용하게{!gl.live && " · 저장된 답변"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </aside>
+              )}
+            </>
           ) : app === "mail" ? (
             <div className="flex h-full w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
               <div className="flex items-center gap-2 bg-[#ece7e1] px-3 py-2">
@@ -886,7 +956,7 @@ export default function Demo() {
                 <span className="flex-1 text-center font-mono text-xs tracking-[0.14em] text-black/50">ALTER · 10월 24일 토</span>
               </div>
               <div className="min-h-0 flex-1">
-                <Dashboard minutes={minutes} onResume={resume} onAsk={askAnything} />
+                <Dashboard done={done} onResume={resume} onAsk={(q) => askAnything(q)} />
               </div>
             </div>
           )}
@@ -895,7 +965,7 @@ export default function Demo() {
         {/* HUD */}
         {hud && (
           <div className="pointer-events-none absolute bottom-[5.5rem] left-1/2 z-30 -translate-x-1/2">
-            <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-black/90 px-4 py-2 text-sm text-white shadow-lg">{hud}</div>
+            <div className="pointer-events-auto flex max-w-[92vw] flex-wrap items-center justify-center gap-3 rounded-full bg-black/90 px-4 py-2 text-sm text-white shadow-lg">{hud}</div>
           </div>
         )}
 
@@ -928,7 +998,10 @@ export default function Demo() {
                 />
               </div>
               {paletteA ? (
-                <div className="p-4 text-sm text-black/80">{paletteA}</div>
+                <div className={`p-4 text-sm ${paletteA.ok ? "text-black/80" : "bg-amber-50 text-amber-900"}`}>
+                  <p className="whitespace-pre-line">{paletteA.text === "…" ? "✦ 오늘 하루를 보고 있어요…" : paletteA.text}</p>
+                  {!paletteA.ok && <button onClick={() => void submitPalette()} className="mt-2 rounded-full bg-black px-3 py-1 text-xs text-white">다시 시도</button>}
+                </div>
               ) : (
                 <ul className="p-2">
                   {actions.map((a, i) => (
