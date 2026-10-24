@@ -323,7 +323,7 @@ export default function Demo() {
     if (!code) return;
     setMailDrafting(true);
     const share = shareFacts();
-    if (handoff) share.push({ id: "just-read", label: "방금 읽은 글", value: handoff.title });
+    share.push({ id: "just-read", label: "방금 읽은 글", value: handoff?.title ?? ARTICLE.title });
     const r = await postJson<{ text: string; usedFactIds?: string[] }>("/api/fill", { code, label: "교수님께 보내는 짧은 답장: 방금 읽은 글을 바탕으로 발표에서 다룰 방향 한 줄", facts: share });
     setMailDrafting(false);
     if (!r.ok || !r.data.text) return setToast(`✦ ${r.ok ? FAIL_TEXT.error : FAIL_TEXT[r.reason]}`);
@@ -589,7 +589,7 @@ export default function Demo() {
         <span>✦ 방금 읽은 글로 초안을 썼어요</span>
         <button onClick={undoMail} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">되돌리기</button>
       </>
-    ) : app === "mail" && handoff && !mail.body ? (
+    ) : app === "mail" && !mail.body ? (
       <>
         <span>✦ 방금 읽은 글로 답장 초안을 쓸까요?</span>
         <button onClick={draftMail} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">초안 쓰기</button>
@@ -597,13 +597,14 @@ export default function Demo() {
     ) : null;
 
   const steps = [
-    { done: tour.explained || g.nudges.opened > 0, text: "잠시 읽거나, 단어를 선택하고 ⌘E를 눌러 보세요" },
-    { done: tour.filled, text: "「세미나 신청」을 열어 보세요. 양식이 알아서 채워져요" },
-    { done: tour.mailed, text: "메일을 열면 읽은 글로 답장 초안을 제안해요" },
-    { done: tour.menu, text: "✦로 링과 진행중인 일을 보세요" },
-    { done: tour.phone, text: "폰으로 QR을 찍어 보세요" },
+    { done: tour.explained || g.nudges.opened > 0, text: "잠시 읽거나, 단어를 선택하고 ⌘E를 눌러 보세요", go: () => { openApp("browser"); setTab("article"); } },
+    { done: tour.filled, text: "「세미나 신청」을 열어 보세요. 양식이 알아서 채워져요", go: () => { openApp("browser"); setTab("signup"); } },
+    { done: tour.mailed, text: "메일을 열어 보세요. 답장 초안을 제안해요", go: () => openApp("mail") },
+    { done: tour.menu, text: "✦로 링과 진행중인 일을 보세요", go: () => openMenu() },
+    { done: tour.phone, text: "폰으로 QR을 찍어 보세요", go: () => openPhone() },
   ];
   const doneCount = steps.filter((s) => s.done).length;
+  const nextStep = steps.findIndex((s) => !s.done);
   const fromName = facts.find((f) => f.key === "name")?.value ?? "나";
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
   const appName = app === "browser" ? "브라우저" : app === "mail" ? "메일" : "Alter";
@@ -645,10 +646,12 @@ export default function Demo() {
                 <button aria-label="가이드 숨기기" onClick={() => foldCoach("folded")} className="text-black/40 hover:text-black">✕</button>
               </div>
               <ul className="mt-2 space-y-2">
-                {steps.map((s) => (
-                  <li key={s.text} className={`flex gap-2 ${s.done ? "text-black/40" : "text-black/80"}`}>
-                    <span className={s.done ? "text-green-600" : "text-black/30"}>{s.done ? "✓" : "○"}</span>
-                    <span className={s.done ? "line-through" : ""}>{s.text}</span>
+                {steps.map((s, i) => (
+                  <li key={s.text}>
+                    <button onClick={s.go} className={`flex w-full gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-black/5 ${s.done ? "text-black/40" : i === nextStep ? "bg-indigo-50 font-medium text-black" : "text-black/80"}`}>
+                      <span className={s.done ? "text-green-600" : i === nextStep ? "text-indigo-600" : "text-black/30"}>{s.done ? "✓" : i === nextStep ? "→" : "○"}</span>
+                      <span className={s.done ? "line-through" : ""}>{s.text}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
