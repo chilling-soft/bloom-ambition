@@ -6,6 +6,7 @@ import { WORK, type ResumeAction } from "@/lib/work";
 import { MiniRings, Rings } from "./Rings";
 
 const mono = "font-mono text-[11px] tracking-[0.08em] text-black/50";
+const FOLLOW = ["화요일 발표 개요 만들어줘", "오늘 남은 걸 우선순위로 정리해줘"];
 const STARTERS = ["나 이제 뭘 해야 돼?", "오늘 뭐 남았어?", "화요일 발표 준비, 어디부터 할까?"];
 const TAG: Record<string, string> = { life: "bg-amber-700/10 text-amber-800", ai: "bg-indigo-600/10 text-indigo-700", bio: "bg-emerald-600/10 text-emerald-700", esports: "bg-rose-600/10 text-rose-700" };
 const TAG_NAME: Record<string, string> = { life: "생활", ai: "AI·개발", bio: "바이오", esports: "이스포츠" };
@@ -95,6 +96,13 @@ export function Dashboard({ done, onResume, onAsk }: { done: Done; onResume: (a:
         <div className={`rounded-2xl p-4 text-sm shadow-sm ${answer.ok ? "bg-white" : "bg-amber-50"}`}>
           {answer.q && <p className="text-xs text-black/40">{answer.q}</p>}
           <p className={`mt-1 whitespace-pre-line ${answer.ok ? "text-black/80" : "text-amber-900"}`}>{answer.text}</p>
+          {answer.ok && (
+            <div className="mt-3 flex flex-wrap gap-2 text-sm">
+              {FOLLOW.filter((f) => f !== answer.q).map((f) => (
+                <button key={f} onClick={() => void submit(f)} className="rounded-full border border-black/10 px-3 py-1 text-black/70 hover:bg-black/[0.03]">{f}</button>
+              ))}
+            </div>
+          )}
           <div className="mt-2 flex gap-2 text-xs">
             {!answer.ok && answer.q && <button onClick={() => void submit(answer.q)} className="rounded-full bg-black px-3 py-1 text-white">다시 시도</button>}
             <button onClick={() => { setAnswer(null); setQ(""); }} className="rounded-full border border-black/15 px-3 py-1 text-black/60">닫기</button>
