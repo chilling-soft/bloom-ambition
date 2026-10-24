@@ -565,38 +565,38 @@ export default function Demo() {
       <>
         <span>{toast.startsWith("✦") ? toast : `✦ ${toast}`}</span>
         {noteUndo && (
-          <button onClick={() => { noteUndo(); setToast(""); setNoteUndo(null); }} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">되돌리기</button>
+          <button onClick={() => { noteUndo(); setToast(""); setNoteUndo(null); }} className="rounded-full border border-white/30 px-4 py-1.5 text-base">되돌리기</button>
         )}
       </>
     ) : app === "browser" && tab === "article" && gl?.status === "ready" && !gl.counted ? (
       <>
         <span>✦ 이 문단에서 한참 머물렀어요. 다음은?</span>
-        <button onClick={easier} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">쉽게 다시</button>
-        <button onClick={g.open} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">3줄 요약</button>
-        <button onClick={nextTask} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">다음 태스크</button>
+        <button onClick={easier} className="rounded-full bg-white px-4 py-1.5 text-base text-black">쉽게 다시</button>
+        <button onClick={g.open} className="rounded-full border border-white/30 px-4 py-1.5 text-base">3줄 요약</button>
+        <button onClick={nextTask} className="rounded-full border border-white/30 px-4 py-1.5 text-base">다음 태스크</button>
         <button aria-label="넘기기" onClick={g.dismiss} className="text-white/50 hover:text-white">✕</button>
       </>
     ) : app === "browser" && tab === "signup" && !joined && filled ? (
       <>
         <span>✦ 알아서 채웠어요</span>
-        <button onClick={undo} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">되돌리기</button>
+        <button onClick={undo} className="rounded-full border border-white/30 px-4 py-1.5 text-base">되돌리기</button>
       </>
     ) : app === "browser" && tab === "signup" && !joined && fillMode === "ask" && !optedOut && detected ? (
       <>
         <span>✦ 이 양식을 채울까요?</span>
-        <button onClick={fill} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">채우기</button>
+        <button onClick={fill} className="rounded-full bg-white px-4 py-1.5 text-base text-black">채우기</button>
       </>
     ) : app === "mail" && mailDrafting ? (
       <span>✦ 초안을 쓰는 중…</span>
     ) : app === "mail" && filled ? (
       <>
         <span>✦ 방금 읽은 글로 초안을 썼어요</span>
-        <button onClick={undoMail} className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">되돌리기</button>
+        <button onClick={undoMail} className="rounded-full border border-white/30 px-4 py-1.5 text-base">되돌리기</button>
       </>
     ) : app === "mail" && !mail.body ? (
       <>
         <span>✦ 방금 읽은 글로 답장 초안을 쓸까요?</span>
-        <button onClick={draftMail} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">초안 쓰기</button>
+        <button onClick={draftMail} className="rounded-full bg-white px-4 py-1.5 text-base text-black">초안 쓰기</button>
       </>
     ) : null;
 
@@ -639,10 +639,14 @@ export default function Demo() {
           </div>
         )}
 
-        {/* first-run guide, styled like an OS notification; shown only where it fits beside the window */}
+        {/* first-run guide, styled like an OS notification; shown only where it fits beside the window.
+            It hugs the browser window's left edge (window is 860px centered; the side panel shifts it 176px left) */}
         {app !== "alter" &&
           (coach === "open" ? (
-            <div className="absolute left-4 top-44 z-10 hidden w-60 rounded-2xl border border-black/10 bg-white/85 p-4 text-sm shadow-xl backdrop-blur min-[1360px]:block">
+            <div
+              className="absolute top-44 z-10 hidden w-60 rounded-2xl border border-black/10 bg-white/85 p-4 text-sm shadow-xl backdrop-blur min-[1360px]:block"
+              style={{ left: `max(1rem, calc(50% - ${panelOpen ? 858 : 682}px))` }}
+            >
               <div className="flex items-center justify-between">
                 <p className="font-medium">
                   Alter 써 보기 <span className="text-black/40">{doneCount}/{steps.length}</span>
@@ -666,7 +670,11 @@ export default function Demo() {
               )}
             </div>
           ) : (
-            <button onClick={() => foldCoach("open")} className="absolute left-4 top-44 z-10 hidden rounded-full bg-white/85 px-3 py-1.5 text-xs shadow backdrop-blur min-[1360px]:block">
+            <button
+              onClick={() => foldCoach("open")}
+              className="absolute top-44 z-10 hidden rounded-full bg-white/85 px-3 py-1.5 text-xs shadow backdrop-blur min-[1360px]:block"
+              style={{ left: `max(1rem, calc(50% - ${panelOpen ? 858 : 682}px))` }}
+            >
               가이드
             </button>
           ))}
@@ -1014,12 +1022,12 @@ export default function Demo() {
         {/* HUD */}
         {hud && (
           <div className="pointer-events-none absolute bottom-[5.5rem] left-1/2 z-30 -translate-x-1/2">
-            <div className="pointer-events-auto flex max-w-[92vw] flex-wrap items-center justify-center gap-3 rounded-full bg-black/90 px-4 py-2 text-sm text-white shadow-lg">{hud}</div>
+            <div className="pointer-events-auto flex max-w-[92vw] flex-wrap items-center justify-center gap-3 rounded-full bg-black/90 px-6 py-3.5 text-lg text-white shadow-2xl">{hud}</div>
           </div>
         )}
 
-        <a href="#how" className="absolute bottom-4 right-4 z-20 hidden rounded-full bg-black/70 px-3 py-1.5 text-xs text-white backdrop-blur sm:block">
-          어떻게 동작하나요 ↓
+        <a href="#how" className="absolute bottom-5 right-5 z-20 hidden rounded-full bg-black/80 px-5 py-2.5 text-base font-medium text-white shadow-lg backdrop-blur sm:block">
+          아래로 스크롤해서 어떻게 동작하는지 확인해보세요 ↓
         </a>
 
         {/* Dock: the last icon is the Alter app itself (the dashboard) */}
