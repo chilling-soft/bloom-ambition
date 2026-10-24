@@ -17,7 +17,7 @@ export const sessionSchema = z.object({
     .array(
       z.object({
         id: z.string().max(64),
-        kind: z.enum(["identity", "interest", "activity"]),
+        kind: z.enum(["identity", "interest", "activity", "habit"]),
         key: z.string().max(40),
         label: z.string().max(60),
         value: z.string().max(300),

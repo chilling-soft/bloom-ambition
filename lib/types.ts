@@ -1,6 +1,6 @@
 export type Fact = {
   id: string;
-  kind: "identity" | "interest" | "activity";
+  kind: "identity" | "interest" | "activity" | "habit"; // habit: how this person likes to be helped
   key: string;
   label: string;
   value: string;
