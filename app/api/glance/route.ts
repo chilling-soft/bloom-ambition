@@ -35,14 +35,16 @@ export async function POST(req: Request) {
       model: anthropic("claude-haiku-5-5"),
       system: SYSTEM,
       prompt: `글 제목: ${title}\n\n글 내용:\n${text}\n\nAlter가 아는 사용자 정보:\n${facts.map((f) => `- ${f.label}: ${f.value}`).join("\n") || "(아직 없음)"}`,
+      // accept a few extra items and trim in code: a strict max(3) made valid answers fail validation now and then
       output: Output.object({
-        schema: z.object({ gist: z.array(z.string()).min(1).max(3), questions: z.array(z.string()).max(3), why: z.string() }),
+        schema: z.object({ gist: z.array(z.string()).min(1).max(8), questions: z.array(z.string()).max(8), why: z.string() }),
       }),
-      maxOutputTokens: 600,
-      abortSignal: AbortSignal.timeout(10000),
+      maxOutputTokens: 800,
+      abortSignal: AbortSignal.timeout(12000),
     });
-    return NextResponse.json({ ...output, live: true });
-  } catch {
+    return NextResponse.json({ gist: output.gist.slice(0, 3), questions: output.questions.slice(0, 3), why: output.why, live: true });
+  } catch (e) {
+    console.error("glance failed", e instanceof Error ? e.message : e);
     return NextResponse.json({ ...CANNED, live: false });
   }
 }
