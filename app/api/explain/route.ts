@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       model: anthropic("claude-haiku-5-5"),
       system: SYSTEM,
       prompt: `선택한 용어: ${term}\n주변 글: ${context}`,
-      maxOutputTokens: 250,
+      maxOutputTokens: 500, // Korean needs more tokens per sentence; 250 cut answers mid-sentence
       abortSignal: AbortSignal.timeout(8000),
     });
     return NextResponse.json({ text: text.trim() || canned, live: true });

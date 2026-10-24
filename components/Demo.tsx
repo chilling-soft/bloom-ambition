@@ -236,7 +236,8 @@ export default function Demo() {
     if (!s || !text || text.length > 40 || !articleRef.current?.contains(s.anchorNode) || denied) return setSel(null);
     const r = s.getRangeAt(0).getBoundingClientRect();
     const c = contentRef.current!.getBoundingClientRect();
-    const para = s.anchorNode?.parentElement?.closest("p")?.textContent ?? text;
+    // a word outside any paragraph (the title) still gets the whole article as context
+    const para = s.anchorNode?.parentElement?.closest("p")?.textContent ?? ARTICLE.paras.join("\n\n");
     const next = { x: r.left - c.left + r.width / 2, y: r.top - c.top + contentRef.current!.scrollTop - 40, text, context: para };
     setSel(next);
     if (trigger === "auto") setTimeout(() => explain(next), 600);
