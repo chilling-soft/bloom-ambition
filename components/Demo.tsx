@@ -1141,7 +1141,7 @@ export default function Demo() {
         )}
 
         {/* HUD */}
-        {hud && (
+        {hud && !welcome && (
           <div className="pointer-events-none absolute bottom-[5.5rem] left-1/2 z-30 -translate-x-1/2">
             <div className="pointer-events-auto flex max-w-[92vw] flex-wrap items-center justify-center gap-3 rounded-full bg-black/90 px-6 py-3.5 text-lg text-white shadow-2xl">{hud}</div>
           </div>
@@ -1153,7 +1153,7 @@ export default function Demo() {
           </button>
         )}
 
-        <a href="#how" data-tour="how" onClick={() => markDone("how")} className="absolute bottom-5 right-5 z-20 hidden rounded-full bg-black/80 px-5 py-2.5 text-base font-medium text-white shadow-lg backdrop-blur sm:block">
+        <a href="#how" data-tour="how" onClick={() => markDone("how")} className="absolute bottom-5 right-5 z-20 hidden rounded-full bg-black/80 px-5 py-2.5 text-base font-medium text-white shadow-lg backdrop-blur min-[1100px]:block">
           아래로 스크롤해서 어떻게 동작하는지 확인해보세요 ↓
         </a>
 
