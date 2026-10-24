@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alter — pitch</title>
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: #fff; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .slide { position: relative; width: 1280px; height: 720px; overflow: hidden; background: linear-gradient(135deg, #d9cfe8 0%, #ead9d2 50%, #cfe0e8 100%); }
+  .slide + .slide { break-before: page; page-break-before: always; }
+  .body { position: absolute; inset: 0 0 72px 0; padding: 44px 56px 0; }
+  /* reserved strip for the event logo band that the submission requires */
+  .band { position: absolute; left: 0; right: 0; bottom: 0; height: 72px; background: #fff; display: flex; align-items: center; justify-content: center; }
+  .band img { max-height: 56px; max-width: 100%; }
+  .tag { font: 600 12px ui-monospace, Menlo, monospace; letter-spacing: .16em; color: rgba(0,0,0,.5); text-transform: uppercase; }
+  h1 { font-size: 52px; line-height: 1.08; letter-spacing: -.02em; margin-top: 14px; }
+  .sub { font-size: 20px; line-height: 1.4; color: rgba(0,0,0,.65); margin-top: 16px; }
+  .shot { position: absolute; border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.1); background: #fff; overflow: hidden; }
+  .shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .feat { margin-top: 26px; display: flex; flex-direction: column; gap: 16px; }
+  .feat div { display: flex; gap: 14px; align-items: flex-start; }
+  .feat b { display: block; font-size: 18px; }
+  .feat span { display: block; font-size: 15px; line-height: 1.4; color: rgba(0,0,0,.62); margin-top: 2px; }
+  .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 7px; }
+  .pill { display: inline-block; background: #111; color: #fff; border-radius: 999px; padding: 7px 16px; font-size: 14px; font-weight: 600; }
+  .foot { position: absolute; left: 56px; bottom: 22px; font-size: 14px; color: rgba(0,0,0,.6); }
+  /* slide 2 */
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 18px; margin-top: 22px; }
+  .card { background: rgba(255,255,255,.88); border-radius: 18px; padding: 20px 22px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .card h3 { font-size: 17px; margin-bottom: 4px; }
+  .card .lead { font-size: 13px; color: rgba(0,0,0,.55); margin-bottom: 12px; }
+  .row { display: flex; gap: 10px; font-size: 14px; line-height: 1.38; margin-top: 9px; }
+  .row .k { flex: none; font: 600 11px ui-monospace, Menlo, monospace; letter-spacing: .06em; padding: 3px 8px; border-radius: 999px; height: 20px; margin-top: 1px; }
+  .live { background: #d1fae5; color: #047857; }
+  .next { background: #e0e7ff; color: #4338ca; }
+  .tier { display: grid; grid-template-columns: 26px 1fr; gap: 10px; margin-top: 10px; font-size: 14px; line-height: 1.38; }
+  .tier i { font-style: normal; width: 24px; height: 24px; border-radius: 50%; background: #111; color: #fff; text-align: center; font-size: 12px; line-height: 24px; font-weight: 700; }
+  .tier i.off { background: #fff; color: #111; border: 1.5px dashed rgba(0,0,0,.4); line-height: 21px; }
+  .note { margin-top: 14px; font-size: 13px; line-height: 1.4; color: rgba(0,0,0,.6); border-top: 1px solid rgba(0,0,0,.08); padding-top: 10px; }
+  .why { margin-top: 18px; background: #111; color: #fff; border-radius: 18px; padding: 16px 24px; display: flex; gap: 22px; align-items: center; font-size: 15px; line-height: 1.42; }
+  .why b { color: #c7d2fe; }
+</style>
+</head>
+<body>
+
+<!-- ───────── Slide 1: the product ───────── -->
+<section class="slide">
+  <div class="body">
+    <p class="tag">Alter · personal agent at the OS layer</p>
+    <h1 style="width: 560px">Your model follows you across every app and device.</h1>
+    <p class="sub" style="width: 520px">It reads along, helps before you ask, and stays out of the way. You can see everything it knows, and change it.</p>
+
+    <div class="feat" style="width: 500px">
+      <div><i class="dot" style="background:#111"></i><p><b>Quiet by default</b><span>Appears only when you call it (⌘E) or when a small signal shows: you are stuck on a paragraph, a form is waiting.</span></p></div>
+      <div><i class="dot" style="background:#4F46E5"></i><p><b>Yours to see and edit</b><span>Every fact has a source and a confidence. Edit it, delete it, switch learning off. Passwords, payments and banks are never touched.</span></p></div>
+      <div><i class="dot" style="background:#059669"></i><p><b>Playful, never pushy</b><span>Daily rings per interest fill with minutes of real use. Nothing is ever taken away.</span></p></div>
+    </div>
+
+    <!-- screens: reading + proactive offer, dashboard across apps and devices, phone -->
+    <div class="shot" style="left: 650px; top: 38px; width: 574px; height: 358px"><img src="img/browser-explain.png" alt="Reading page with an explanation and Alter's stuck offer"></div>
+    <div class="shot" style="left: 704px; top: 330px; width: 520px; height: 300px"><img src="img/dashboard.png" alt="Alter dashboard: rings and in-progress work across apps and devices"></div>
+    <div class="shot" style="left: 1080px; top: 262px; width: 168px; height: 378px; border-radius: 22px"><img src="img/phone.png" alt="The same Alter on the phone"></div>
+
+    <p class="foot"><span class="pill">Live demo</span>&nbsp; alter-demo-gamma.vercel.app &nbsp;·&nbsp; github.com/chilling-soft/bloom-ambition</p>
+  </div>
+  <div class="band"><img src="img/event-logo-band.png" alt="" onerror="this.style.display='none'"></div>
+</section>
+
+<!-- ───────── Slide 2: how it works and why it gets cheaper ───────── -->
+<section class="slide">
+  <div class="body">
+    <p class="tag">How it works</p>
+    <h1 style="font-size: 42px; width: 1100px">One brain, many sensors. A faster, cheaper brain over time.</h1>
+
+    <div class="cols">
+      <div class="card">
+        <h3>Sensors</h3>
+        <p class="lead">thin, one per OS, each through its sanctioned API</p>
+        <div class="row"><span class="k live">LIVE</span><span>Browser: selection, forms, reading. Phone: same Alter via QR.</span></div>
+        <div class="row"><span class="k next">NEXT</span><span>macOS Accessibility API · Windows UI Automation · Android Autofill + assistant role · iOS Safari extension + share sheet</span></div>
+      </div>
+
+      <div class="card">
+        <h3>Brain</h3>
+        <p class="lead">the same everywhere</p>
+        <div class="row"><span class="k live">LIVE</span><span>Context store: each fact has a source, a confidence, and an owner who can edit it.</span></div>
+        <div class="row"><span class="k live">LIVE</span><span>Safety rules in code, not prompts: passwords, payments and banks are never read.</span></div>
+        <div class="row"><span class="k live">LIVE</span><span>Learns how you like to be helped: open or pass, and goes quiet when you pass.</span></div>
+      </div>
+
+      <div class="card">
+        <h3>Models, cheapest first</h3>
+        <p class="lead">most interactions never reach a cloud model</p>
+        <div class="tier"><i>0</i><span><b>Code</b>: standard fields, rules. Zero cost, instant. <b>Live</b></span></div>
+        <div class="tier"><i class="off">1</i><span><b>OS on-device model</b>: private first pass (strip personal data, classify). Apple Foundation Models, Android Gemini Nano (ML Kit GenAI), Windows AI APIs. <b>Next</b></span></div>
+        <div class="tier"><i>2</i><span><b>Claude Haiku 5.5</b>: explain, draft, decide. <b>Live</b></span></div>
+        <div class="tier"><i class="off">3</i><span><b>Larger Claude</b>: only for hard tasks. <b>As needed</b></span></div>
+        <p class="note">Next for tier 2: specialized decision models (typed questions in, calibrated probabilities out) and fast diffusion language models, behind the same interface. <b>Not used in this submission; every AI call in this demo is Claude.</b></p>
+      </div>
+    </div>
+
+    <div class="why">
+      <div style="font-size: 30px">⏱</div>
+      <p><b>Why now:</b> every major OS now ships an on-device model to developers, and fast specialized models make "should Alter speak now?" cheap enough to ask constantly. The brain stays the same; each new device is a thin sensor, not a rewrite.</p>
+    </div>
+
+    <p class="foot">Built today · new repository, no earlier code · alter-demo-gamma.vercel.app</p>
+  </div>
+  <div class="band"><img src="img/event-logo-band.png" alt="" onerror="this.style.display='none'"></div>
+</section>
+
+</body>
+</html>
