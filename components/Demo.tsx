@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { ARTICLE } from "@/lib/article";
 import { collectFields, isDeniedHost, setValue } from "@/lib/core";
+import { upsert } from "@/lib/facts";
 import type { Fact, Handoff } from "@/lib/types";
+import { useGlance, type Proactivity } from "./useGlance";
 
 type Tab = "article" | "signup" | "bank";
 const TABS: { id: Tab; title: string; host: string }[] = [
@@ -21,16 +24,6 @@ const SEED: Fact[] = [
 
 // still explained, but not worth remembering as something the user "looked up"
 const STOPWORDS = new Set(["the", "and", "for", "with", "that", "this", "from", "they", "their", "were", "have", "after", "into", "through", "within", "next"]);
-
-const uid = () => Math.random().toString(36).slice(2, 9);
-
-function upsert(facts: Fact[], f: Omit<Fact, "id">): Fact[] {
-  const i = facts.findIndex((x) => x.key === f.key);
-  if (i === -1) return [{ ...f, id: uid(), isNew: true }, ...facts];
-  const old = facts[i];
-  const next = { ...old, ...f, id: old.id, confidence: Math.min(1, Math.max(old.confidence, f.confidence) + 0.05) };
-  return facts.map((x, j) => (j === i ? next : x));
-}
 
 type Sel = { x: number; y: number; text: string; context: string };
 type Card = { term: string; text: string; live: boolean };
@@ -83,6 +76,7 @@ export default function Demo() {
   const [mail, setMail] = useState({ to: "", subject: "", body: "" });
   const [mailUsed, setMailUsed] = useState<string[]>([]);
   const [mailDrafting, setMailDrafting] = useState(false);
+  const [proactivity, setProactivity] = useState<Proactivity>("balanced");
   const [declined, setDeclined] = useState(false); // the user undid the fill on this form
   const [focusAsk, setFocusAsk] = useState<{ x: number; y: number } | null>(null); // "fill from Alter?" under a focused field
   const [optOut, setOptOut] = useState<string[]>(() => {
@@ -104,6 +98,8 @@ export default function Demo() {
   const denied = app === "browser" && isDeniedHost(host);
   const canLearn = learning === "on" && !denied;
   const optedOut = optOut.includes(host);
+
+  const g = useGlance({ code, facts, setFacts, learning: canLearn, watching: app === "browser" && tab === "article", proactivity });
 
   const saveOptOut = (next: string[]) => {
     setOptOut(next);
@@ -270,6 +266,7 @@ export default function Demo() {
     setJoined(false);
     setDeclined(false);
     setFocusAsk(null);
+    g.reset();
   };
 
   // a value the user types over stops being "filled by Alter" (synthetic events from fill() are not trusted)
@@ -322,8 +319,9 @@ export default function Demo() {
 
   // palette actions depend on where the user is: only what makes sense right now
   // render only describes the actions (plain data); the work happens in runAction, called from handlers
-  type ActionId = "fill" | "undo" | "draft" | "undoDraft" | "settings" | "phone";
+  type ActionId = "fill" | "undo" | "draft" | "undoDraft" | "glance" | "settings" | "phone";
   const actions: { id: ActionId; label: string }[] = [];
+  if (app === "browser" && tab === "article") actions.push({ id: "glance", label: "Summarize this page" });
   if (app === "browser" && tab === "signup" && !joined && !denied) actions.push(filled ? { id: "undo", label: "Undo auto-fill" } : { id: "fill", label: "Fill this form" });
   if (app === "mail") actions.push(filled ? { id: "undoDraft", label: "Undo draft" } : { id: "draft", label: "Draft a note from what I just read" });
   actions.push({ id: "settings", label: "Open what Alter knows & settings" }, { id: "phone", label: "Pair your phone" });
@@ -334,6 +332,10 @@ export default function Demo() {
     else if (id === "undo") undo();
     else if (id === "draft") draftMail();
     else if (id === "undoDraft") undoMail();
+    else if (id === "glance") {
+      if (g.glance && g.glance.status !== "loading") g.open();
+      else g.load(true);
+    }
     else if (id === "settings") setPopover(true);
     else setShowPhone(true);
   };
@@ -356,6 +358,7 @@ export default function Demo() {
         setPopover(false);
         setCard(null);
         setSel(null);
+        g.minimize();
         return;
       }
       if (!palette) return;
@@ -377,6 +380,7 @@ export default function Demo() {
       const t = e.target as Element;
       if (popover && !t.closest("[data-popover], [data-toggle]")) setPopover(false);
       if (card && !t.closest("[data-bubble]")) setCard(null);
+      if (g.glance?.status === "open" && !t.closest("[data-glance]")) g.minimize();
       if (sel && !t.closest("[data-chip], article")) setSel(null);
       if (focusAsk && !t.closest("[data-askfill]")) setFocusAsk(null);
     };
@@ -424,6 +428,7 @@ export default function Demo() {
       </>
     ) : null;
 
+  const gl = g.glance;
   const fromName = facts.find((f) => f.key === "name")?.value ?? "You";
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
 
@@ -492,6 +497,7 @@ export default function Demo() {
             <div className="flex flex-wrap gap-2">
               <Chips label="Explain" value={trigger} options={[["manual", "Manual"], ["auto", "Auto"]]} onChange={setTrigger} />
               <Chips label="Forms" value={fillMode} options={[["auto", "Auto"], ["ask", "Ask"], ["off", "Off"]]} onChange={setFillMode} />
+              <Chips label="Proactive" value={proactivity} options={[["quiet", "Quiet"], ["balanced", "Balanced"], ["eager", "Eager"]]} onChange={setProactivity} />
               <Chips label="Learning" value={learning} options={[["on", "On"], ["off", "Off"]]} onChange={setLearning} />
             </div>
             {optOut.length > 0 && (
@@ -505,6 +511,11 @@ export default function Demo() {
                 ))}
               </div>
             )}
+            {g.nudges.opened + g.nudges.dismissed > 0 && (
+              <p className="mt-3 text-xs text-black/60">
+                Gists so far: opened {g.nudges.opened}, dismissed {g.nudges.dismissed}.{!g.autoOffer && proactivity !== "quiet" && " Paused: ask with ⌘E instead."}
+              </p>
+            )}
             <p className="mt-3 text-xs text-black/50">Never read or learned: passwords, payment fields, banking sites.</p>
             <p className="mt-1 text-xs text-black/40">Vault for sensitive items: coming next.</p>
             <button onClick={() => { setShowPhone(true); setPopover(false); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">See it on your phone</button>
@@ -514,7 +525,7 @@ export default function Demo() {
         {/* app window */}
         <div className="absolute inset-x-0 bottom-36 top-40 flex justify-center px-4 [@media(max-height:700px)]:top-8 [@media(max-height:700px)]:pt-5">
           {app === "browser" ? (
-            <div className="flex h-full w-full max-w-[820px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+            <div className="relative flex h-full w-full max-w-[820px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
               <div className="flex items-center gap-2 bg-[#ece7e1] px-3 pt-2">
                 <div className="mr-2 flex gap-1.5 pb-2">
                   <i className="h-3 w-3 rounded-full bg-[#ff5f57]" />
@@ -524,7 +535,7 @@ export default function Demo() {
                 {TABS.map((t) => (
                   <button
                     key={t.id}
-                    onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); }}
+                    onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); g.reset(); }}
                     className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
                   >
                     {t.title}
@@ -575,15 +586,12 @@ export default function Demo() {
 
                 {tab === "article" && (
                   <article ref={articleRef} onMouseUp={onArticleMouseUp} className="mx-auto max-w-prose">
-                    <p className="text-xs uppercase tracking-wide text-black/40">Esports Daily · Oct 23</p>
-                    <h3 className="mt-1 text-2xl font-semibold">T1 reach the final after a five-game thriller</h3>
-                    <p className="mt-4 leading-relaxed text-black/80">
-                      T1 survived a back-and-forth semifinal, turning a slow opening into a decisive lead through snowballing in the mid game. After trading objectives for twenty minutes, they secured Baron and ended the game within three fights.
-                    </p>
-                    <p className="mt-3 leading-relaxed text-black/80">
-                      The coach said the team prepared the draft for weeks. The final is next Saturday.
-                    </p>
-                    <p className="mt-6 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-black/50">Try it: select a word like “snowballing” or “Baron”, then press ⌘E. Then open Mail from the Dock.</p>
+                    <p className="text-xs uppercase tracking-wide text-black/40">{ARTICLE.kicker}</p>
+                    <h3 className="mt-1 text-2xl font-semibold">{ARTICLE.title}</h3>
+                    {ARTICLE.paras.map((p, i) => (
+                      <p key={i} className={`${i === 0 ? "mt-4" : "mt-3"} leading-relaxed text-black/80`}>{p}</p>
+                    ))}
+                    <p className="mt-6 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-black/50">Just read. After a few seconds Alter offers a gist on its own. Or select a word and press ⌘E, then open Mail from the Dock.</p>
                   </article>
                 )}
 
@@ -620,6 +628,46 @@ export default function Demo() {
                   </form>
                 )}
               </div>
+
+              {/* proactive: Alter reads along and offers a gist by itself, as a small chip that opens on demand */}
+              {tab === "article" && gl && gl.status !== "prefetch" && (
+                gl.status === "ready" ? (
+                  <div data-glance className="absolute bottom-4 right-4 z-10 flex items-center rounded-full bg-black text-sm text-white shadow-xl">
+                    <button onClick={g.open} className="py-2 pl-4 pr-2">✦ Gist ready</button>
+                    <button aria-label="Dismiss" onClick={g.dismiss} className="py-2 pl-1 pr-3 text-white/50 hover:text-white">✕</button>
+                  </div>
+                ) : gl.status === "loading" ? (
+                  <div data-glance className="absolute bottom-4 right-4 z-10 rounded-full bg-black px-4 py-2 text-sm text-white shadow-xl">✦ Reading along…</div>
+                ) : (
+                  <div data-glance className="absolute bottom-4 right-4 z-10 max-h-[85%] w-80 overflow-y-auto rounded-2xl border border-black/10 bg-white p-4 text-sm shadow-2xl">
+                    <div className="flex items-start justify-between">
+                      <p className="font-medium">✦ The gist</p>
+                      <button aria-label="Dismiss" onClick={g.dismiss} className="text-black/40 hover:text-black">✕</button>
+                    </div>
+                    <ul className="mt-2 list-disc space-y-1 pl-4 text-black/80">
+                      {gl.gist.map((b) => (
+                        <li key={b}>{b}</li>
+                      ))}
+                    </ul>
+                    {gl.questions.length > 0 && (
+                      <>
+                        <p className="mt-3 text-xs font-medium uppercase tracking-wide text-black/40">Curious about…</p>
+                        <div className="mt-1 flex flex-col gap-1.5">
+                          {gl.questions.map((q) => (
+                            <div key={q}>
+                              <button onClick={() => g.ask(q)} className="w-full rounded-lg border border-black/10 px-3 py-1.5 text-left hover:bg-black/[0.03]">{q}</button>
+                              {gl.answers[q] && <p className="mt-1 px-1 text-black/70">{gl.answers[q]}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    <p className="mt-3 text-xs text-black/40">
+                      Why you see this: {gl.why || "you stayed on this page"} Make it quieter in ✦.{!gl.live && " · cached"}
+                    </p>
+                  </div>
+                )
+              )}
             </div>
           ) : (
             <div className="flex h-full w-full max-w-[640px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
