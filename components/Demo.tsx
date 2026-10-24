@@ -99,6 +99,7 @@ export default function Demo() {
   const [vault, setVault] = useState(false);
   const [vaultAuto, setVaultAuto] = useState(false); // opened from the suggestion: fill as soon as it unlocks
   const [welcome, setWelcome] = useState(false); // first visit: one card that says what to try
+  const [caption, setCaption] = useState(""); // what the guided tour is showing right now
   const [mailDraft, setMailDraft] = useState(""); // what Alter wrote, to compare with what the person actually sends
   const [guide, setGuide] = useState(false);
   const [popover, setPopover] = useState(false); // menu-bar window: rings, what Alter knows, settings
@@ -132,6 +133,7 @@ export default function Demo() {
   });
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const tourLive = useRef(false); // the guided tour is running; any touch or Esc stops it
   const osRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -369,6 +371,36 @@ export default function Demo() {
     if (a === "alter") markDone("menu");
   };
 
+  const stopTour = () => {
+    tourLive.current = false;
+    setCaption("");
+  };
+
+  // a guided run of the same actions a visitor would take; touching the screen or Esc hands control back at once
+  const startTour = async () => {
+    tourLive.current = true;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const scenes: [string, () => void | Promise<void>, number][] = [
+      ["① 글을 읽고 있으면 Alter가 먼저 말을 걸어요", () => { openApp("browser"); setTab("article"); void g.load(false); }, 5500],
+      ["② 단어를 고르면 한국어로 바로 설명해요", () => explain({ x: 260, y: 330, text: "pairformer", context: ARTICLE_TEXT }), 5000],
+      ["③ 양식은 알아서 채워요. 되돌리기는 한 번이에요", () => { openApp("browser"); setTab("signup"); }, 5000],
+      ["④ 카드·비밀번호는 Alter가 읽지 않고, 보관함에서 채워요", () => { openApp("browser"); setTab("bank"); }, 5000],
+      ["⑤ 메일을 열면 읽은 글로 답장 초안을 써요", async () => { openApp("mail"); await wait(1200); await draftMail(); }, 5000],
+      ["⑥ 대시보드에서 오늘 뭘 해야 하는지 물어보세요", () => openApp("alter"), 4000],
+    ];
+    for (const [text, act, ms] of scenes) {
+      if (!tourLive.current) return;
+      setCaption(text);
+      await act();
+      await wait(ms);
+    }
+    if (tourLive.current) {
+      setCaption("이제 직접 해 보세요. 왼쪽 ‘다음’을 따라가면 돼요");
+      await wait(4500);
+    }
+    stopTour();
+  };
+
   // "이어서": jump to where the unfinished thing lives
   const resume = (a: ResumeAction) => {
     if (a.type === "note") return setToast(`✦ ${a.text}`);
@@ -522,6 +554,7 @@ export default function Demo() {
         setPopover(false);
         setCard(null);
         setSel(null);
+        stopTour();
         g.minimize();
         return;
       }
@@ -539,6 +572,18 @@ export default function Demo() {
     const h = (e: KeyboardEvent) => kbRef.current(e);
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const stopRef = useRef(() => {});
+  useEffect(() => {
+    stopRef.current = () => {
+      if (tourLive.current) stopTour();
+    };
+  });
+  useEffect(() => {
+    const h = () => stopRef.current();
+    window.addEventListener("pointerdown", h, true);
+    return () => window.removeEventListener("pointerdown", h, true);
   }, []);
 
   // anything Alter opened closes itself when you click somewhere else (the docked panel stays until you close it)
@@ -626,12 +671,13 @@ export default function Demo() {
   const doneCount = steps.filter((s) => s.done).length;
   const nextStep = steps.findIndex((s) => !s.done);
   const styleRule = facts.find((f) => f.key === "habit:mail-style")?.value; // what Alter learned from edited drafts
-  const closeWelcome = (start: boolean) => {
+  const closeWelcome = (mode: "tour" | "self") => {
     setWelcome(false);
     try {
       localStorage.setItem("alter-welcome", "1");
     } catch {}
-    if (start) steps[0].go();
+    if (mode === "tour") void startTour();
+    else steps[0].go();
   };
   const fromName = facts.find((f) => f.key === "name")?.value ?? "나";
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
@@ -644,6 +690,7 @@ export default function Demo() {
         <div className="relative z-20 flex h-9 items-center justify-between bg-white/45 px-4 text-[13px] text-black/70 backdrop-blur">
           <div className="flex items-center gap-4">
             <span className="font-semibold">{appName}</span>
+            <button onClick={() => void startTour()} className="rounded-full bg-indigo-600 px-3 py-0.5 text-xs font-medium text-white">▶ 자동 안내</button>
             <span className="hidden gap-4 text-black/50 sm:flex"><span>파일</span><span>편집</span><span>보기</span></span>
           </div>
           <div className="flex items-center gap-3">
@@ -1048,6 +1095,15 @@ export default function Demo() {
           )}
         </div>
 
+        {caption && (
+          <div className="pointer-events-none absolute left-1/2 top-12 z-40 -translate-x-1/2">
+            <div className="flex max-w-[92vw] flex-wrap items-center justify-center gap-3 rounded-full bg-indigo-600 px-6 py-3 text-base text-white shadow-2xl">
+              <span>▶ {caption}</span>
+              <span className="text-sm text-white/70">화면을 누르거나 Esc로 멈춰요</span>
+            </div>
+          </div>
+        )}
+
         {/* HUD */}
         {hud && (
           <div className="pointer-events-none absolute bottom-[5.5rem] left-1/2 z-30 -translate-x-1/2">
@@ -1087,8 +1143,8 @@ export default function Demo() {
               </ol>
               <p className="mt-4 text-xs text-black/50">채팅창에 복사해 붙여넣지 않아도, 지금 보는 화면에서 바로 도와요.</p>
               <div className="mt-5 flex gap-2">
-                <button onClick={() => closeWelcome(true)} className="flex-1 rounded-full bg-black py-2.5 text-sm text-white">시작하기</button>
-                <button onClick={() => closeWelcome(false)} className="rounded-full border border-black/15 px-4 py-2.5 text-sm">둘러볼게요</button>
+                <button onClick={() => closeWelcome("tour")} className="flex-1 rounded-full bg-black py-2.5 text-sm text-white">▶ 자동으로 보기 (60초)</button>
+                <button onClick={() => closeWelcome("self")} className="rounded-full border border-black/15 px-4 py-2.5 text-sm">직접 해 볼게요</button>
               </div>
             </div>
           </div>
