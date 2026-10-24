@@ -2,7 +2,7 @@ import { INTERESTS, PICKS, remaining, type Done, type RingId } from "./rings";
 
 export type ResumeAction =
   | { type: "tab"; tab: "article" | "signup" | "bank" }
-  | { type: "app"; app: "browser" | "mail" }
+  | { type: "app"; app: "browser" | "mail" | "code" }
   | { type: "note"; text: string };
 
 export type Work = { icon: string; iconColor: string; title: string; where: string; device: string; ring: RingId; action: ResumeAction };
@@ -10,7 +10,7 @@ export type Work = { icon: string; iconColor: string; title: string; where: stri
 // what Alter picked up from your screens: app, device, when, and how far you got (sample data in this demo)
 export const WORK: Work[] = [
   { icon: "카드", iconColor: "#111111", title: "카드 자동납부 계좌 변경", where: "카드사 사이트 · 어제 22:10 · 2/3단계", device: "노트북", ring: "life", action: { type: "tab", tab: "bank" } },
-  { icon: "{ }", iconColor: "#4338CA", title: "diffusion-toy / train.py", where: "VS Code · 11:40 · 에러에서 멈춤", device: "노트북", ring: "ai", action: { type: "note", text: "VS Code는 데스크톱 센서가 있어야 이어갈 수 있어요. 다음 단계에서 지원해요." } },
+  { icon: "{ }", iconColor: "#4338CA", title: "diffusion-toy / train.py", where: "VS Code · 11:40 · 에러에서 멈춤", device: "노트북", ring: "ai", action: { type: "app", app: "code" } },
   { icon: "PDF", iconColor: "#047857", title: "AlphaFold 3 — diffusion 모듈", where: "브라우저 · 12:45 · 62% 읽음", device: "폰", ring: "bio", action: { type: "tab", tab: "article" } },
   { icon: "▶", iconColor: "#BE123C", title: "T1 vs GEN 3세트 시청중", where: "유튜브 · 12:50 · 14분 남음", device: "폰", ring: "esports", action: { type: "note", text: "유튜브는 폰에서 이어서 볼 수 있어요. (데모에서는 연결하지 않았어요)" } },
   { icon: "메일", iconColor: "#111111", title: "교수님께 답장 — 발표 자료 형식", where: "Mail · 09:12 · 초안 저장됨", device: "노트북", ring: "bio", action: { type: "app", app: "mail" } },

@@ -10,6 +10,7 @@ import { upsert } from "@/lib/facts";
 import { INTERESTS, isClosed, PICKS, remaining, START_DONE, type Done, type RingId } from "@/lib/rings";
 import type { Fact, Handoff } from "@/lib/types";
 import { dayContext, type ResumeAction } from "@/lib/work";
+import { CodeApp } from "./CodeApp";
 import { Dashboard, type AskResult } from "./Dashboard";
 import { GuideSetup } from "./GuideSetup";
 import { Rings } from "./Rings";
@@ -17,7 +18,7 @@ import { Vault } from "./Vault";
 import { useGlance, type Proactivity } from "./useGlance";
 
 type Tab = "article" | "signup" | "bank";
-type AppId = "browser" | "mail" | "alter";
+type AppId = "browser" | "mail" | "code" | "alter";
 
 const TABS: { id: Tab; title: string; host: string }[] = [
   { id: "article", title: "Nature", host: "nature.com/articles/s41586-024-07487-w" },
@@ -418,11 +419,11 @@ export default function Demo() {
   };
 
   // Alter answers from the person's whole day, not just the question: that is what makes "what should I do now?" answerable
-  const askAnything = async (q: string, loose = false, onText?: (soFar: string) => void): Promise<AskResult> => {
+  const askAnything = async (q: string, loose = false, onText?: (soFar: string) => void, extra = ""): Promise<AskResult> => {
     if (!code) return { ok: false, text: FAIL_TEXT.network };
     const reading = app === "browser" && tab === "article";
-    const place = reading ? `브라우저에서 「${ARTICLE.title}」을 읽는 중` : app === "mail" ? "메일 앱" : app === "alter" ? "Alter 대시보드" : "브라우저";
-    const context = dayContext({ done, place, read: handoff ? { title: handoff.title, term: handoff.term } : reading ? { title: ARTICLE.title } : null }) + (reading ? `\n\n지금 읽고 있는 글:\n${ARTICLE_TEXT}` : "");
+    const place = reading ? `브라우저에서 「${ARTICLE.title}」을 읽는 중` : app === "mail" ? "메일 앱" : app === "code" ? "VS Code" : app === "alter" ? "Alter 대시보드" : "브라우저";
+    const context = dayContext({ done, place, read: handoff ? { title: handoff.title, term: handoff.term } : reading ? { title: ARTICLE.title } : null }) + (reading ? `\n\n지금 읽고 있는 글:\n${ARTICLE_TEXT}` : "") + (extra ? `\n\n${extra}` : "");
     const r = await askStream({ code, q, context, facts: shareFacts().slice(0, 15).map(({ label, value }) => ({ label, value })) }, onText ?? (() => {}), loose);
     if (!r.ok) return { ok: false, text: FAIL_TEXT[r.reason] };
     if (learning === "on" && !loose) setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q.slice(0, 120), source: "Alter", confidence: 0.5 }));
@@ -713,7 +714,7 @@ export default function Demo() {
   })();
   const fromName = facts.find((f) => f.key === "name")?.value ?? "나";
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
-  const appName = app === "browser" ? "브라우저" : app === "mail" ? "메일" : "Alter";
+  const appName = app === "browser" ? "브라우저" : app === "mail" ? "메일" : app === "code" ? "VS Code" : "Alter";
 
   return (
     <div className="h-full">
@@ -1084,6 +1085,8 @@ export default function Demo() {
                 </aside>
               )}
             </>
+          ) : app === "code" ? (
+            <CodeApp ask={(q, extra, onText) => askAnything(q, false, onText, extra)} />
           ) : app === "mail" ? (
             <div className="flex h-full w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
               <div className="flex items-center gap-2 bg-[#ece7e1] px-3 py-2">
@@ -1156,7 +1159,7 @@ export default function Demo() {
 
         {/* Dock: the last icon is the Alter app itself (the dashboard) */}
         <div data-tour="dock" className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-end gap-2 rounded-2xl bg-white/40 p-2 backdrop-blur">
-          {([["browser", "🌐", "브라우저"], ["mail", "✉️", "메일"]] as const).map(([id, icon, name]) => (
+          {([["browser", "🌐", "브라우저"], ["mail", "✉️", "메일"], ["code", "⌨️", "코드"]] as const).map(([id, icon, name]) => (
             <button key={id} data-tour={`dock-${id}`} aria-label={name} onClick={() => openApp(id)} className={`flex h-12 w-12 flex-col items-center justify-center rounded-xl text-2xl ${app === id ? "bg-white shadow" : "hover:bg-white/60"}`}>
               {icon}
             </button>
