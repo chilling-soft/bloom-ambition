@@ -621,6 +621,8 @@ export default function Demo() {
   const closedNames = INTERESTS.filter((i) => isClosed(done, i)).map((i) => i.short);
   const panelOpen = app === "browser" && tab === "article" && (gl?.status === "open" || gl?.status === "loading");
   const vaultOffer = app === "browser" && !vault && (tab === "bank" || (tab === "signup" && !joined));
+  // the window sits 176px left of center with the Alter panel docked beside it, 136px with the narrower vault card
+  const guideShift = panelOpen ? 858 : vaultOffer ? 818 : 682;
   const closePanel = () => {
     g.dismiss();
     setFocusQ(null);
@@ -746,7 +748,7 @@ export default function Demo() {
           (coach === "open" ? (
             <div
               className="absolute top-44 z-10 hidden w-60 rounded-2xl border border-black/10 bg-white/85 p-4 text-sm shadow-xl backdrop-blur min-[1360px]:block"
-              style={{ left: `max(1rem, calc(50% - ${panelOpen ? 858 : 682}px))` }}
+              style={{ left: `max(1rem, calc(50% - ${guideShift}px))` }}
             >
               <div className="flex items-center justify-between">
                 <p className="font-medium">
@@ -774,7 +776,7 @@ export default function Demo() {
             <button
               onClick={() => foldCoach("open")}
               className="absolute top-44 z-10 hidden rounded-full bg-white/85 px-3 py-1.5 text-xs shadow backdrop-blur min-[1360px]:block"
-              style={{ left: `max(1rem, calc(50% - ${panelOpen ? 858 : 682}px))` }}
+              style={{ left: `max(1rem, calc(50% - ${guideShift}px))` }}
             >
               가이드
             </button>
@@ -1101,7 +1103,7 @@ export default function Demo() {
                 </p>
                 <label className="block">받는 사람{tag("to")}<input name="to" value={mail.to} onChange={(e) => setMail((m) => ({ ...m, to: e.target.value }))} placeholder="kim.prof@lab.example" className={inp("to")} /></label>
                 <label className="block">제목{tag("subject")}<input name="subject" value={mail.subject} onChange={(e) => setMail((m) => ({ ...m, subject: e.target.value }))} className={inp("subject")} /></label>
-                <label className="block">내용{tag("body")}<textarea name="body" rows={6} value={mail.body} onChange={(e) => setMail((m) => ({ ...m, body: e.target.value }))} className={inp("body")} /></label>
+                <label className="block">내용{tag("body")}<textarea name="body" rows={4} value={mail.body} onChange={(e) => setMail((m) => ({ ...m, body: e.target.value }))} className={inp("body")} /></label>
                 {filled && styleRule && <p className="text-xs text-indigo-700">✦ 고쳐 보낸 메일에서 배운 취향을 참고했어요: {styleRule}</p>}
                 {mailUsed.length > 0 && (
                   <p className="text-xs text-black/50">근거: {mailUsed.map((id) => facts.find((f) => f.id === id)?.value).filter(Boolean).join(", ") || "방금 읽은 글"}</p>
