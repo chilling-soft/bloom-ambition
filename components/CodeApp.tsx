@@ -111,6 +111,7 @@ export function CodeApp({ ask }: { ask: Ask }) {
   const close = () => {
     req.current++;
     setCard(null);
+    setOffer(true);
   };
   const setFix = (on: boolean) => {
     req.current++;
@@ -121,7 +122,7 @@ export function CodeApp({ ask }: { ask: Ask }) {
 
   return (
     <>
-      <div className="relative flex h-full min-w-0 max-w-[860px] flex-1 flex-col overflow-hidden rounded-xl border border-black/10 bg-[#1e1e1e] shadow-lg">
+      <div className="relative flex h-[calc(100%-4.5rem)] min-w-0 max-w-[860px] flex-1 flex-col overflow-hidden rounded-xl border border-black/10 bg-[#1e1e1e] shadow-lg">
         <div className="flex items-center gap-2 bg-[#2b2b2b] px-3 pt-2">
           <div className="mr-2 flex gap-1.5 pb-2">
             <i className="h-3 w-3 rounded-full bg-[#ff5f57]" />
@@ -142,14 +143,14 @@ export function CodeApp({ ask }: { ask: Ask }) {
             );
           })}
         </pre>
-        <div className="h-40 flex-none overflow-auto border-t border-white/10 bg-[#181818] px-3 py-2">
+        <div className="h-44 flex-none overflow-auto border-t border-white/10 bg-[#181818] px-3 py-2">
           <p className="font-sans text-[11px] uppercase tracking-wide text-white/40">터미널</p>
           <pre data-terminal className={`mt-1 whitespace-pre-wrap break-words font-mono text-[12px] leading-5 ${fixed ? "text-emerald-300" : "text-red-300"}`}>{fixed ? PASS : TRACEBACK}</pre>
         </div>
       </div>
 
       {card && (
-        <aside data-code-card className="flex h-full w-[340px] flex-none flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+        <aside data-code-card className="flex h-[calc(100%-4.5rem)] w-[340px] flex-none flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
           <div className="flex h-10 flex-none items-center gap-2 bg-[#ece7e1] px-3">
             <span className="text-sm font-medium">✦ Alter</span>
             <span className="text-xs text-black/40">· {TITLE[card.kind]}</span>
@@ -179,7 +180,7 @@ export function CodeApp({ ask }: { ask: Ask }) {
       )}
 
       {fixed && (
-        <div className="absolute -bottom-14 left-1/2 z-30 -translate-x-1/2">
+        <div className="absolute bottom-1 left-1/2 z-30 -translate-x-1/2">
           <div className="flex items-center gap-3 whitespace-nowrap rounded-full bg-black/90 px-6 py-3.5 text-lg text-white shadow-2xl">
             <span>✦ 고쳐서 돌려 봤어요. 학습이 시작됐어요</span>
             <button data-undo onClick={() => setFix(false)} className="rounded-full border border-white/30 px-4 py-1.5 text-base">되돌리기</button>
@@ -187,7 +188,7 @@ export function CodeApp({ ask }: { ask: Ask }) {
         </div>
       )}
       {offer && !card && !fixed && (
-        <div className="absolute -bottom-14 left-1/2 z-30 -translate-x-1/2">
+        <div className="absolute bottom-1 left-1/2 z-30 -translate-x-1/2">
           <div data-code-offer className="flex max-w-[92vw] flex-wrap items-center justify-center gap-3 rounded-full bg-black/90 px-6 py-3.5 text-lg text-white shadow-2xl">
             <span>✦ 에러에서 멈춘 것 같아요</span>
             <button onClick={why} className="rounded-full bg-white px-4 py-1.5 text-base text-black">원인 설명</button>
