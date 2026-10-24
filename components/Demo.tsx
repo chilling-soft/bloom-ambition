@@ -199,7 +199,7 @@ export default function Demo() {
       fetch(`/api/store/${code}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ facts, handoff, done, updatedAt: Date.now() }),
+        body: JSON.stringify({ facts: facts.filter((f) => f.kind !== "identity"), handoff, done, updatedAt: Date.now() }),
       }).catch(() => {});
     }, 300);
     return () => clearTimeout(t);
@@ -312,7 +312,9 @@ export default function Demo() {
   // a secret field (password, id, card number) got focus: Alter offers its vault from above the field, outside the page
   const onVaultFocus = (e: React.FocusEvent) => {
     const el = e.target as HTMLInputElement;
-    if (el.tagName !== "INPUT" || !osRef.current || !(el.type === "password" || el.name === "userid" || el.name === "cardno")) return;
+    const secret = el.tagName === "INPUT" && (el.type === "password" || el.name === "userid" || el.name === "cardno");
+    if (!secret) return setVaultAsk(null);
+    if (!osRef.current) return;
     const r = el.getBoundingClientRect();
     const o = osRef.current.getBoundingClientRect();
     setVaultAsk({ x: r.left - o.left, y: r.top - o.top - 46 });
@@ -354,6 +356,7 @@ export default function Demo() {
     setDeclined(false);
     setFocusAsk(null);
     setFocusQ(null);
+    setVaultAsk(null);
     g.reset();
     if (a === "alter") markDone("menu");
   };
@@ -374,7 +377,7 @@ export default function Demo() {
     const context = dayContext({ done, place, read: handoff ? { title: handoff.title, term: handoff.term } : reading ? { title: ARTICLE.title } : null }) + (reading ? `\n\n지금 읽고 있는 글:\n${ARTICLE_TEXT}` : "");
     const r = await askStream({ code, q, context, facts: shareFacts().slice(0, 15).map(({ label, value }) => ({ label, value })) }, onText ?? (() => {}), loose);
     if (!r.ok) return { ok: false, text: FAIL_TEXT[r.reason] };
-    if (learning === "on") setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q.slice(0, 120), source: "Alter", confidence: 0.5 }));
+    if (learning === "on" && !loose) setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q.slice(0, 120), source: "Alter", confidence: 0.5 }));
     return { ok: true, text: r.data.text };
   };
 
@@ -502,6 +505,7 @@ export default function Demo() {
         setPopover(false);
         setCard(null);
         setSel(null);
+        setVaultAsk(null);
         g.minimize();
         return;
       }
