@@ -10,7 +10,9 @@ import { INTERESTS, isClosed, PICKS, remaining, START_DONE, type Done, type Ring
 import type { Fact, Handoff } from "@/lib/types";
 import { dayContext, type ResumeAction } from "@/lib/work";
 import { Dashboard, type AskResult } from "./Dashboard";
+import { GuideSetup } from "./GuideSetup";
 import { Rings } from "./Rings";
+import { Vault } from "./Vault";
 import { useGlance, type Proactivity } from "./useGlance";
 
 type Tab = "article" | "signup" | "bank";
@@ -94,6 +96,8 @@ export default function Demo() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [joined, setJoined] = useState(false);
   const [showPhone, setShowPhone] = useState(false);
+  const [vault, setVault] = useState(false);
+  const [guide, setGuide] = useState(false);
   const [popover, setPopover] = useState(false); // menu-bar window: rings, what Alter knows, settings
   const [palette, setPalette] = useState(false); // Raycast-style command palette (⌘E with no selection)
   const [paletteIdx, setPaletteIdx] = useState(0);
@@ -430,12 +434,18 @@ export default function Demo() {
   };
 
   // render only describes the actions (plain data); the work happens in runAction, called from handlers
-  type ActionId = "fill" | "undo" | "draft" | "undoDraft" | "glance" | "settings" | "dashboard" | "phone";
+  type ActionId = "fill" | "undo" | "draft" | "undoDraft" | "glance" | "settings" | "dashboard" | "phone" | "vault" | "guide";
   const actions: { id: ActionId; label: string }[] = [];
   if (app === "browser" && tab === "article") actions.push({ id: "glance", label: "이 글 요약하기" });
   if (app === "browser" && tab === "signup" && !joined && !denied) actions.push(filled ? { id: "undo", label: "자동 입력 되돌리기" } : { id: "fill", label: "이 양식 채우기" });
   if (app === "mail") actions.push(filled ? { id: "undoDraft", label: "초안 되돌리기" } : { id: "draft", label: "방금 읽은 내용으로 답장 초안 쓰기" });
-  actions.push({ id: "dashboard", label: "진행중인 일 보기" }, { id: "settings", label: "Alter 메뉴 열기" }, { id: "phone", label: "폰 연결하기" });
+  actions.push(
+    { id: "dashboard", label: "진행중인 일 보기" },
+    { id: "guide", label: "하루 가이드 말로 정하기" },
+    { id: "vault", label: "보관함 열기" },
+    { id: "settings", label: "Alter 메뉴 열기" },
+    { id: "phone", label: "폰 연결하기" },
+  );
 
   const runAction = (id: ActionId) => {
     setPalette(false);
@@ -447,6 +457,8 @@ export default function Demo() {
       if (g.glance && g.glance.status !== "loading") g.open();
       else g.load(true);
     } else if (id === "dashboard") openApp("alter");
+    else if (id === "vault") setVault(true);
+    else if (id === "guide") setGuide(true);
     else if (id === "settings") openMenu();
     else openPhone();
   };
@@ -736,7 +748,10 @@ export default function Demo() {
               </p>
             )}
             <p className="mt-3 text-xs text-black/50">읽지도 배우지도 않는 것: 비밀번호, 결제 칸, 은행 사이트.</p>
-            <p className="mt-1 text-xs text-black/40">민감한 정보 보관함(Vault)은 다음 단계예요.</p>
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => { setVault(true); setPopover(false); }} className="flex-1 rounded-full border border-black/15 py-1.5 text-xs">보관함</button>
+              <button onClick={() => { setGuide(true); setPopover(false); }} className="flex-1 rounded-full border border-black/15 py-1.5 text-xs">하루 가이드</button>
+            </div>
             <button onClick={() => { openPhone(); setPopover(false); }} className="mt-4 w-full rounded-full bg-black py-2 text-xs text-white">폰으로 이어서 보기</button>
           </div>
         )}
@@ -845,7 +860,9 @@ export default function Demo() {
                   {tab === "bank" && (
                     <form onSubmit={(e) => e.preventDefault()} className="mx-auto max-w-sm space-y-3">
                       <h3 className="text-xl font-semibold">카드사 로그인</h3>
-                      <label className="block text-sm">아이디<input className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
+                      <label className="block text-sm">아이디<input name="userid" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
+                      <label className="block text-sm">카드번호<input name="cardno" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
+                      <p className="text-xs text-black/50">Alter는 이 페이지를 읽지 않아요. 보관함에서 직접 눌러야 채워져요.</p>
                       <label className="block text-sm">비밀번호<input type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <button className="w-full rounded-lg bg-black py-2.5 text-white">로그인</button>
                     </form>
@@ -1019,6 +1036,32 @@ export default function Demo() {
         )}
       </div>
 
+      {vault && (
+        <Vault
+          onClose={() => setVault(false)}
+          canFill={app === "browser" && tab === "bank"}
+          onFill={(values) => {
+            // only the item the person tapped arrives here; the bank page itself is never read
+            const byName: Record<string, string | undefined> = { userid: values.account, cardno: values.card };
+            for (const [n, v] of Object.entries(byName)) {
+              const el = v ? contentRef.current?.querySelector<HTMLInputElement>(`input[name=${n}]`) : null;
+              if (el && v) setValue(el, v);
+            }
+            setVault(false);
+            setToast("✦ 보관함에서 직접 채웠어요. 기록에 남아요");
+          }}
+        />
+      )}
+      {guide && (
+        <GuideSetup
+          onClose={() => setGuide(false)}
+          ask={(q) => askAnything(q)}
+          onSave={(ring, summary) => {
+            const name = INTERESTS.find((i) => i.id === ring)?.short ?? ring;
+            setFacts((f) => upsert(f, { kind: "habit", key: `habit:guide:${ring}`, label: "하루 가이드", value: `${name}: ${summary}`.slice(0, 280), source: "말로 정함", confidence: 0.9 }));
+          }}
+        />
+      )}
       {showPhone && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowPhone(false)}>
           <div className="rounded-2xl bg-white p-6 text-center" onClick={(e) => e.stopPropagation()}>
