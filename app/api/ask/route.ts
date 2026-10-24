@@ -10,6 +10,7 @@ const body = z.object({
   code: codeSchema,
   q: z.string().min(1).max(300),
   context: z.string().max(4000).default(""),
+  loose: z.boolean().default(false), // a fixed-format reply (a summary line) need not end like a sentence
   // accept a long list and keep only the newest: a long session must never turn into a rejected request
   facts: z.array(z.object({ label: z.string().max(60), value: z.string().max(300) })).max(100).default([]),
 });
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
     console.error("ask bad body", parsed.error.issues[0]?.path.join("."), parsed.error.issues[0]?.message);
     return fail("bad_body", 400);
   }
-  const { code, q, context } = parsed.data;
+  const { code, q, context, loose } = parsed.data;
   const facts = parsed.data.facts.slice(-15);
 
   if (!process.env.ANTHROPIC_API_KEY) return fail("no_key", 503);
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
       });
       const t = text.trim();
       // the model sometimes stops mid-sentence: only a reply that ends like a sentence is shown as is
-      if (t && finishReason === "stop" && /[.!?。요다죠까]["”)]?$/.test(t)) return NextResponse.json({ text: t, live: true });
+      if (t && finishReason === "stop" && (loose || /[.!?。요다죠까]["”)]?$/.test(t))) return NextResponse.json({ text: t, live: true });
       console.error(`ask incomplete (attempt ${attempt})`, finishReason, t.slice(-20));
       if (t.length > best.length) best = t;
     } catch (e) {

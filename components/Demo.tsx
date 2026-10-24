@@ -355,12 +355,12 @@ export default function Demo() {
   };
 
   // Alter answers from the person's whole day, not just the question: that is what makes "what should I do now?" answerable
-  const askAnything = async (q: string, extra = ""): Promise<AskResult> => {
+  const askAnything = async (q: string, loose = false): Promise<AskResult> => {
     if (!code) return { ok: false, text: FAIL_TEXT.network };
     const reading = app === "browser" && tab === "article";
     const place = reading ? `브라우저에서 「${ARTICLE.title}」을 읽는 중` : app === "mail" ? "메일 앱" : app === "alter" ? "Alter 대시보드" : "브라우저";
-    const context = dayContext({ done, place, read: handoff ? { title: handoff.title, term: handoff.term } : reading ? { title: ARTICLE.title } : null }) + (reading ? `\n\n지금 읽고 있는 글:\n${ARTICLE_TEXT}` : "") + extra;
-    const r = await postJson<{ text: string }>("/api/ask", { code, q, context, facts: shareFacts().slice(0, 15).map(({ label, value }) => ({ label, value })) });
+    const context = dayContext({ done, place, read: handoff ? { title: handoff.title, term: handoff.term } : reading ? { title: ARTICLE.title } : null }) + (reading ? `\n\n지금 읽고 있는 글:\n${ARTICLE_TEXT}` : "");
+    const r = await postJson<{ text: string }>("/api/ask", { code, q, context, loose, facts: shareFacts().slice(0, 15).map(({ label, value }) => ({ label, value })) });
     if (!r.ok) return { ok: false, text: FAIL_TEXT[r.reason] };
     if (learning === "on") setFacts((f) => upsert(f, { kind: "activity", key: `activity:asked:${q.slice(0, 40)}`, label: "물어본 것", value: q.slice(0, 120), source: "Alter", confidence: 0.5 }));
     return { ok: true, text: r.data.text };
@@ -1055,7 +1055,7 @@ export default function Demo() {
       {guide && (
         <GuideSetup
           onClose={() => setGuide(false)}
-          ask={(q) => askAnything(q)}
+          ask={(q) => askAnything(q, true)}
           onSave={(ring, summary) => {
             const name = INTERESTS.find((i) => i.id === ring)?.short ?? ring;
             setFacts((f) => upsert(f, { kind: "habit", key: `habit:guide:${ring}`, label: "하루 가이드", value: `${name}: ${summary}`.slice(0, 280), source: "말로 정함", confidence: 0.9 }));
