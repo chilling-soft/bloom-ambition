@@ -428,9 +428,9 @@ export default function Demo() {
   const fromEmail = facts.find((f) => f.key === "email")?.value ?? "";
 
   return (
-    <div>
-      {/* a tiny OS: menu bar, windows, Dock. Alter lives at the OS layer above every app */}
-      <div className="relative h-[660px] overflow-hidden rounded-2xl border border-black/10 bg-gradient-to-br from-[#d9cfe8] via-[#ead9d2] to-[#cfe0e8] shadow-xl">
+    <div className="h-full">
+      {/* a tiny OS that fills its container: menu bar, windows, Dock. Alter lives at the OS layer above every app */}
+      <div className="relative h-full overflow-hidden bg-gradient-to-br from-[#d9cfe8] via-[#ead9d2] to-[#cfe0e8]">
         <div className="relative z-20 flex h-8 items-center justify-between bg-white/40 px-3 text-xs text-black/70 backdrop-blur">
           <div className="flex items-center gap-4">
             <span className="font-semibold">{app === "browser" ? "Browser" : "Mail"}</span>
@@ -442,6 +442,13 @@ export default function Demo() {
               ✦
             </button>
           </div>
+        </div>
+
+        {/* the page's title is wallpaper text, so there is no frame around the OS */}
+        <div className="pointer-events-none absolute inset-x-0 top-8 px-4 pt-6 text-center [@media(max-height:700px)]:hidden">
+          <h1 className="text-4xl font-semibold tracking-tight">Alter</h1>
+          <p className="mt-1 text-base text-black/60">It quietly learns you, helps when it matters, and grows into a version of you.</p>
+          <p className="mt-1 text-xs text-black/40">Not a recording. Select a word and press ⌘E, or click ✦ in the menu bar.</p>
         </div>
 
         {/* menu-bar window: what Alter knows + settings */}
@@ -505,7 +512,7 @@ export default function Demo() {
         )}
 
         {/* app window */}
-        <div className="absolute inset-x-0 bottom-36 top-8 flex justify-center px-4 pt-5">
+        <div className="absolute inset-x-0 bottom-36 top-40 flex justify-center px-4 [@media(max-height:700px)]:top-8 [@media(max-height:700px)]:pt-5">
           {app === "browser" ? (
             <div className="flex h-full w-full max-w-[820px] flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
               <div className="flex items-center gap-2 bg-[#ece7e1] px-3 pt-2">
@@ -645,6 +652,10 @@ export default function Demo() {
           </div>
         )}
 
+        <a href="#how" className="absolute bottom-4 right-4 z-20 hidden rounded-full bg-black/70 px-3 py-1.5 text-xs text-white backdrop-blur sm:block">
+          How it works ↓
+        </a>
+
         {/* Dock */}
         <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-end gap-2 rounded-2xl bg-white/40 p-2 backdrop-blur">
           {([["browser", "🌐", "Browser"], ["mail", "✉️", "Mail"]] as const).map(([id, icon, name]) => (
@@ -674,10 +685,6 @@ export default function Demo() {
           </div>
         )}
       </div>
-
-      <p className="mt-4 text-center text-sm text-black/50">
-        Alter stays out of the way. Press <b>⌘E</b> to call it, or click <b>✦</b> for what it knows and its settings.
-      </p>
 
       {showPhone && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowPhone(false)}>
