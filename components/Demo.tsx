@@ -98,7 +98,7 @@ export default function Demo() {
   const [showPhone, setShowPhone] = useState(false);
   const [vault, setVault] = useState(false);
   const [vaultAuto, setVaultAuto] = useState(false); // opened from the suggestion: fill as soon as it unlocks
-  const [vaultDone, setVaultDone] = useState(false);
+  const [vaultAsk, setVaultAsk] = useState<{ x: number; y: number } | null>(null); // floating offer above a focused secret field
   const [guide, setGuide] = useState(false);
   const [popover, setPopover] = useState(false); // menu-bar window: rings, what Alter knows, settings
   const [palette, setPalette] = useState(false); // Raycast-style command palette (⌘E with no selection)
@@ -131,6 +131,7 @@ export default function Demo() {
   });
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const osRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const undoRef = useRef<Map<HTMLInputElement | HTMLTextAreaElement, string>>(new Map());
@@ -306,6 +307,15 @@ export default function Demo() {
     const c = contentRef.current.getBoundingClientRect();
     // above the field: the browser's own autofill list opens below it
     setFocusAsk({ x: r.left - c.left, y: r.top - c.top + contentRef.current.scrollTop - 52 });
+  };
+
+  // a secret field (password, id, card number) got focus: Alter offers its vault from above the field, outside the page
+  const onVaultFocus = (e: React.FocusEvent) => {
+    const el = e.target as HTMLInputElement;
+    if (el.tagName !== "INPUT" || !osRef.current || !(el.type === "password" || el.name === "userid" || el.name === "cardno")) return;
+    const r = el.getBoundingClientRect();
+    const o = osRef.current.getBoundingClientRect();
+    setVaultAsk({ x: r.left - o.left, y: r.top - o.top - 46 });
   };
 
   // cross-app moment: what was read in the Browser becomes the draft in Mail
@@ -520,6 +530,7 @@ export default function Demo() {
       if (card && !t.closest("[data-bubble]")) setCard(null);
       if (sel && !t.closest("[data-chip], article")) setSel(null);
       if (focusAsk && !t.closest("[data-askfill]")) setFocusAsk(null);
+      if (vaultAsk && !t.closest("[data-vaultask]")) setVaultAsk(null);
     };
   });
   useEffect(() => {
@@ -545,12 +556,7 @@ export default function Demo() {
   // the only thing Alter shows by itself: one short-lived line above the Dock
   const hud: React.ReactNode =
     denied ? (
-      <>
-        <span className="text-white/70">✦ 여기서는 멈춰 있어요. 아무것도 읽거나 배우지 않아요.</span>
-        {tab === "bank" && !vaultDone && (
-          <button onClick={() => { setVaultAuto(true); setVault(true); }} className="rounded-full bg-white px-2.5 py-0.5 text-xs text-black">보관함으로 채우기</button>
-        )}
-      </>
+      <span className="text-white/70">✦ 여기서는 멈춰 있어요. 아무것도 읽거나 배우지 않아요.</span>
     ) : toast ? (
       <>
         <span>{toast.startsWith("✦") ? toast : `✦ ${toast}`}</span>
@@ -605,7 +611,7 @@ export default function Demo() {
   return (
     <div className="h-full">
       {/* a tiny OS that fills its container: menu bar, windows, Dock. Alter lives at the OS layer above every app */}
-      <div className="relative h-full overflow-hidden bg-gradient-to-br from-[#d9cfe8] via-[#ead9d2] to-[#cfe0e8]">
+      <div ref={osRef} className="relative h-full overflow-hidden bg-gradient-to-br from-[#d9cfe8] via-[#ead9d2] to-[#cfe0e8]">
         <div className="relative z-20 flex h-9 items-center justify-between bg-white/45 px-4 text-[13px] text-black/70 backdrop-blur">
           <div className="flex items-center gap-4">
             <span className="font-semibold">{appName}</span>
@@ -777,7 +783,7 @@ export default function Demo() {
                   {TABS.map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); setVaultDone(false); g.reset(); }}
+                      onClick={() => { setTab(t.id); setSel(null); setCard(null); setJoined(false); setFilled(false); setDraft(null); setMarks({}); setDeclined(false); setFocusAsk(null); setFocusQ(null); setVaultAsk(null); g.reset(); }}
                       className={`rounded-t-lg px-4 py-1.5 text-sm ${tab === t.id ? "bg-white font-medium" : "text-black/60 hover:bg-white/50"}`}
                     >
                       {t.title}
@@ -842,7 +848,7 @@ export default function Demo() {
                   )}
 
                   {tab === "signup" && (
-                    <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} onFocus={onFormFocus} className="mx-auto max-w-sm space-y-3">
+                    <form ref={formRef} onSubmit={onSubmit} onInput={onFormInput} onFocus={(e) => { onFormFocus(e); onVaultFocus(e); }} className="mx-auto max-w-sm space-y-3">
                       <h3 className="text-xl font-semibold">단백질 설계 세미나 신청</h3>
                       {joined ? (
                         <p className="rounded-lg bg-green-50 p-3 text-sm text-green-800">신청이 접수됐어요.</p>
@@ -866,12 +872,10 @@ export default function Demo() {
                   )}
 
                   {tab === "bank" && (
-                    <form onSubmit={(e) => e.preventDefault()} className="mx-auto max-w-sm space-y-3">
+                    <form onSubmit={(e) => e.preventDefault()} onFocus={onVaultFocus} className="mx-auto max-w-sm space-y-3">
                       <h3 className="text-xl font-semibold">카드사 로그인</h3>
                       <label className="block text-sm">아이디<input name="userid" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <label className="block text-sm">카드번호<input name="cardno" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
-                      <p className="text-xs text-black/50">Alter는 이 페이지를 읽지 않아요. 아이디·카드번호·비밀번호는 보관함에서 직접 눌러야 채워져요.</p>
-                      <button type="button" onClick={() => setVault(true)} className="w-full rounded-lg border border-black/20 py-2 text-sm">보관함 열기</button>
                       <label className="block text-sm">비밀번호<input name="password" type="password" autoComplete="current-password" className="mt-1 w-full rounded-lg border border-black/15 px-3 py-2" /></label>
                       <button className="w-full rounded-lg bg-black py-2.5 text-white">로그인</button>
                     </form>
@@ -988,6 +992,18 @@ export default function Demo() {
           )}
         </div>
 
+        {/* OS-level floating button: it belongs to Alter, not to the page underneath */}
+        {vaultAsk && !vault && app === "browser" && (tab === "bank" || tab === "signup") && (
+          <button
+            data-vaultask
+            style={{ left: vaultAsk.x, top: vaultAsk.y }}
+            onClick={() => { setVaultAuto(true); setVault(true); setVaultAsk(null); }}
+            className="absolute z-30 rounded-full bg-black px-3.5 py-1.5 text-xs text-white shadow-xl"
+          >
+            ✦ 보관함에서 채우기
+          </button>
+        )}
+
         {/* HUD */}
         {hud && (
           <div className="pointer-events-none absolute bottom-[5.5rem] left-1/2 z-30 -translate-x-1/2">
@@ -1059,7 +1075,6 @@ export default function Demo() {
             }
             setVault(false);
             setVaultAuto(false);
-            setVaultDone(true);
             setToast("✦ 보관함에서 채웠어요. 기록에 남아요");
           }}
         />
